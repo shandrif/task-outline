@@ -330,3 +330,9 @@ body.nav-live .top .nav { display: none; }
   .nav-host { order: 3; flex: 1 1 100%; margin: 0; justify-content: center; }
 }
 @media print { .nav-host { display: none !important; } }
+
+/* long section names must wrap inside their column instead of running under the bar */
+.secrow { grid-template-columns: minmax(140px, 1.5fr) 2fr 64px; }
+.secrow > * { min-width: 0; }
+.secrow b, .secrow .small { overflow-wrap: anywhere; }
+@media (max-width: 700px) { .secrow { grid-template-columns: 1fr 64px; } }
