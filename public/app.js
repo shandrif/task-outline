@@ -145,16 +145,34 @@ function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, r
 let session = { role: null };
 const logo = () => h("img", { src: "/logo.png", alt: "½M" });
 
+// ---- liquid navbar (React island, loaded after first paint; plain links are the fallback) ----
+const NAV_KEYS = { "#/admin": "dashboard", "#/admin/evals": "evaluations", "#/admin/questions": "questions", "#/admin/stores": "stores", "#/": "mine", "#/new": "add" };
+let navHost = null, navApi = null, navRole = null, navLinks = [];
+function syncNav(links, activeIdx) {
+  navLinks = links;
+  const opts = { items: links.map(([href, label]) => ({ label, key: NAV_KEYS[href] })), active: activeIdx, onChange: (i) => { location.hash = navLinks[i][0]; } };
+  if (navHost && navRole !== session.role) { navApi = null; navHost = null; }     // different user: rebuild
+  if (!navHost) {
+    navHost = h("div", { class: "nav-host" }); navRole = session.role;
+    const start = () => { if (window.HMNav && !navApi) { navApi = window.HMNav.mount(navHost, opts); document.body.classList.add("nav-live"); } };
+    if (window.HMNav) start();
+    else { const el = document.createElement("script"); el.src = "/nav.js"; el.async = true; el.onload = start; document.head.append(el); }
+  } else if (navApi) navApi.setOptions(opts);
+  return navHost;
+}
+
 function shell(content, active) {
   const admin = session.role === "admin";
   const links = admin
     ? [["#/admin", "Dashboard"], ["#/admin/evals", "Evaluations"], ["#/admin/questions", "Questions"], ["#/admin/stores", "Stores"]]
     : [["#/", "My evaluations"], ["#/new", "New evaluation"]];
+  const idx = Math.max(0, links.findIndex(([href]) => href === active));
   return h("div", {},
     h("header", { class: "top no-print" }, h("div", { class: "top-in" },
       h("a", { class: "brand", href: admin ? "#/admin" : "#/" }, logo(), h("div", {}, h("b", {}, "Staff Knowledge", h("br"), "Evaluation"), h("i"))),
       h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))),
-      h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.store.name), h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; location.hash = ""; render(); } }, "Sign out")))),
+      syncNav(links, idx),
+      h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.store.name), h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; navHost = null; navApi = null; document.body.classList.remove("nav-live"); location.hash = ""; render(); } }, "Sign out")))),
     h("main", {}, content));
 }
 

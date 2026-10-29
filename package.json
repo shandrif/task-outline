@@ -2,15 +2,23 @@
   "name": "hm-staff-evaluation",
   "private": true,
   "version": "1.0.0",
-  "description": "HM staff knowledge evaluation — Cloudflare Workers + D1",
+  "description": "HM staff knowledge evaluation \u2014 Cloudflare Workers + D1",
   "scripts": {
     "dev": "wrangler dev",
     "setup:local": "wrangler d1 migrations apply hm-staff-evaluation-eu --local && wrangler d1 execute hm-staff-evaluation-eu --local --file seed/seed.sql",
     "setup:cloud": "node scripts/setup-cloud.mjs",
     "deploy": "wrangler deploy",
-    "seed:rebuild": "python3 scripts/extract_questions.py \"$XLSX\" seed/questions.json && python3 scripts/build_seed.py seed/questions.json seed/seed.sql"
+    "seed:rebuild": "python3 scripts/extract_questions.py \"$XLSX\" seed/questions.json && python3 scripts/build_seed.py seed/questions.json seed/seed.sql",
+    "build:nav": "esbuild web/src/nav-entry.tsx --bundle --minify --outfile=public/nav.js --alias:@=./web/src --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --target=es2020",
+    "typecheck:web": "tsc -p web/tsconfig.json"
   },
   "devDependencies": {
-    "wrangler": "^4.155.0"
+    "wrangler": "^4.155.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
   }
 }
