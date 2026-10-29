@@ -29,7 +29,7 @@ function toast(msg) {
 }
 
 async function api(path, { method = "GET", body } = {}) {
-  const res = await fetch(`/api${path}`, { method, headers: body ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  const res = await fetch(`/api${path}`, { method, headers: method !== "GET" ? { "content-type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && path !== "/login") { session = { role: null }; render(); throw new Error(data.error || "Signed out"); }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -488,8 +488,13 @@ async function adminEvals(query) {
     g.rows().filter((e) => e.status === "submitted").forEach((e) => rows.push([e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.position_name, e.staff_name, e.staff_code || "", e.evaluator || "", e.submitted_at, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score)]));
     download(rows, `hm-evaluations-${new Date().toISOString().slice(0, 10)}.xlsx`, "Evaluations");
   };
+  const data = list.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, when: e.submitted_at || e.created_at }));
+  const removeEval = async (e) => {
+    if (!(await confirmBox("Delete evaluation?", `${e.staff_name} · ${e.position_name} · ${e.store_code}. This permanently removes the evaluation and its answers.`, "Delete", true))) return;
+    try { await api(`/evals/${e.id}`, { method: "DELETE" }); data.splice(data.indexOf(e), 1); g.setRows(data); toast("Evaluation deleted"); } catch (ex) { toast(ex.message); }
+  };
   const g = grid({
-    rows: list.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, when: e.submitted_at || e.created_at })),
+    rows: data,
     searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.store_code} ${e.store_name} ${e.area_manager} ${e.rom}`,
     filters: [{ key: "status", label: "statuses", show: (v) => (v === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
     initial: { status: "submitted", ...(fromStore ? { store: `${fromStore.store_code} · ${fromStore.store_name}` } : {}) },
@@ -499,7 +504,8 @@ async function adminEvals(query) {
       { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, { key: "position_name", label: "Position" }, ...MAP_COLS,
       { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
       { key: "pctv", label: "Score", num: true, render: (e) => (e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : avgCell(e.pctv)) },
-      { key: "trainpct", label: "Training", num: true, get: (e) => (e.status === "submitted" ? pct(e.trained_count, e.max_score) : null), render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(pct(e.trained_count, e.max_score)) : "") }],
+      { key: "trainpct", label: "Training", num: true, get: (e) => (e.status === "submitted" ? pct(e.trained_count, e.max_score) : null), render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(pct(e.trained_count, e.max_score)) : "") },
+      { key: "del", label: "", nosort: true, render: (e) => h("button", { class: "icon del", title: "Delete evaluation", "aria-label": `Delete evaluation of ${e.staff_name}`, onclick: (ev) => { ev.stopPropagation(); removeEval(e); } }, "🗑") }],
   });
   return shell(h("div", {}, pageHead("Evaluations", "Every evaluation submitted by the stores — sort and filter by store, area manager, ROM, region or city."), h("div", { class: "card" }, g.el)), "#/admin/evals");
 }
