@@ -5,7 +5,7 @@ Web app for evaluating staff knowledge against the HM SBS task outline (Feb 2026
 Stack: Cloudflare Workers (API + static front end) · Cloudflare D1 (database) · plain JS front end, HM brand theme (no build step).
 
 ## What it does
-- **Admin** (`admin` + password): dashboard, add/edit/reorder/remove questions, sections and positions, upload the store list (Excel/CSV: Store ID, Store name, Total staff) — the Store ID is the login, with a viewable 6-character password per store; reset passwords, view/export every evaluation.
+- **Admin** (`admin` + password): dashboard, add/edit/reorder/remove questions, sections and positions, stores come from the shared “AM & ROM Mapping” file (Store ID = branch code, plus Area Manager, ROM, Region, City) and refresh weekly; each store has a viewable 6-character password; reset passwords, edit total staff; every table sorts and filters by area manager / ROM / region / city, view/export every evaluation.
 - **Stores**: sign in, pick a position + staff member, answer every question (*Received training* Yes/No, *Performed* Yes/No), autosave, submit, see the score by section, print or download as Excel.
 - Scoring follows the workbook: each *Performed = Yes* scores 1; section % and overall % = score ÷ number of questions. Sections can be marked *Not applicable* (excluded from scoring).
 
@@ -32,3 +32,6 @@ Use the **Questions** page in the admin area. To reload from a new workbook: `XL
 - Store passwords are encrypted (AES-GCM, key in the `PASSWORD_KEY` secret) so the admin can view/copy them; never reuse them elsewhere. Resetting a password or disabling a store signs out its devices immediately.
 - Sessions are signed HttpOnly cookies; login is rate-limited (8 failures / 15 min per username).
 - Removing a question/section/position only hides it, so past evaluations keep their answers and scores.
+
+## Weekly store sync
+`node scripts/sync-mapping.mjs <mapping.tsv|json> [--local] [--dry-run]` upserts stores and their Area Manager / ROM / Region / City from the mapping sheet (header row must contain Code, Branch, Area Manager). Existing stores keep their password and history; stores that leave the file are disabled, not deleted; "NSO & EVENTS" is skipped. A scheduled Claude task reads the SharePoint file each week and runs this script.

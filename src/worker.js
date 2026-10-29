@@ -236,40 +236,14 @@ async function saveAnswers(env, session, id, body) {
 }
 
 // ----- admin: stores -----
-async function importStores(env, body) {
-  const rows = Array.isArray(body.stores) ? body.stores.slice(0, 10) : [];
-  if (!rows.length) throw bad("No stores supplied");
-  const adminUser = (env.ADMIN_USERNAME || "admin").toLowerCase();
-  const staff = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? Math.min(n, 9999) : null; };
-  const results = [];
-  for (const r of rows) {
-    const name = str(r.name, 120, "Store name");
-    if (!name) continue;
-    const storeId = str(r.code, 40, "Store ID").replace(/\s+/g, "").toUpperCase();
-    const total = staff(r.total_staff);
-    // existing store (matched by Store ID, or by name when no ID is given) -> update details, keep password unless one is supplied
-    const dup = storeId
-      ? await env.DB.prepare("SELECT id,username FROM stores WHERE username=?").bind(storeId).first()
-      : await env.DB.prepare("SELECT id,username FROM stores WHERE lower(name)=lower(?)").bind(name).first();
-    if (dup) {
-      const pw = str(r.password, 100, "Password");
-      await env.DB.prepare("UPDATE stores SET name=?, region=COALESCE(?,region), total_staff=COALESCE(?,total_staff), password_enc=COALESCE(?,password_enc), pw_version=pw_version+? WHERE id=?")
-        .bind(name, str(r.region, 80, "Region") || null, total, pw ? await encryptPassword(env, pw) : null, pw ? 1 : 0, dup.id).run();
-      results.push({ name, status: "updated", username: dup.username });
-      continue;
-    }
-    let username = storeId;
-    if (!username) { // no Store ID supplied: next free HM### number
-      const { m } = await env.DB.prepare("SELECT MAX(CAST(SUBSTR(username,3) AS INTEGER)) m FROM stores WHERE username GLOB 'HM[0-9]*'").first();
-      username = `HM${String((m || 0) + 1).padStart(3, "0")}`;
-    }
-    if (username.toLowerCase() === adminUser) throw bad(`Store ID “${username}” is reserved`);
-    const password = str(r.password, 100, "Password") || randomPassword();
-    await env.DB.prepare("INSERT INTO stores (name,code,region,username,password_enc,total_staff) VALUES (?,?,?,?,?,?)")
-      .bind(name, username, str(r.region, 80, "Region") || null, username, await encryptPassword(env, password), total).run();
-    results.push({ name, status: "created", username, password });
+// Stores arrive from the mapping sync without a password; give each a random one the first time an admin looks.
+async function ensurePasswords(env) {
+  const rows = (await env.DB.prepare("SELECT id FROM stores WHERE password_enc IS NULL LIMIT 120").all()).results;
+  for (let i = 0; i < rows.length; i += 40) {
+    const stmts = [];
+    for (const r of rows.slice(i, i + 40)) stmts.push(env.DB.prepare("UPDATE stores SET password_enc=? WHERE id=? AND password_enc IS NULL").bind(await encryptPassword(env, randomPassword()), r.id));
+    await env.DB.batch(stmts);
   }
-  return { results };
 }
 
 // ----- admin: ordering -----
@@ -308,10 +282,11 @@ async function summary(env) {
      FROM positions p LEFT JOIN evaluations e ON e.position_id=p.id AND e.status='submitted' WHERE p.active=1 GROUP BY p.id ORDER BY p.sort,p.id`
   ).all()).results;
   const byStore = (await env.DB.prepare(
-    `SELECT s.id,s.name,s.username,s.total_staff,COUNT(e.id) evaluations,
+    `SELECT s.id,s.name,s.username,s.total_staff,s.area_manager,s.rom,s.region,s.city,COUNT(e.id) evaluations,
+            COALESCE(SUM(e.score),0) sum_score, COALESCE(SUM(e.max_score),0) sum_max,
             SUM(CASE WHEN e.submitted_at >= strftime('%Y-%m-01') THEN 1 ELSE 0 END) month_done,
             ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
-     FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY (avg_pct IS NULL), avg_pct ASC, s.username LIMIT 200`
+     FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY s.username LIMIT 300`
   ).all()).results;
   // weakest sections across all submitted evaluations
   const weakest = (await env.DB.prepare(
@@ -347,7 +322,7 @@ async function handle(request, env) {
   // --- store: evaluations ---
   if (path === "/api/evals" && method === "GET") {
     const where = isAdmin ? "1=1" : "e.store_id=?";
-    const q = `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.created_at,e.submitted_at,e.evaluator,e.position_id,p.name position_name,st.id store_id,st.name store_name
+    const q = `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.created_at,e.submitted_at,e.evaluator,e.position_id,p.name position_name,st.id store_id,st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city
                FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id WHERE ${where} ORDER BY e.id DESC LIMIT 1000`;
     const stmt = env.DB.prepare(q);
     return json((await (isAdmin ? stmt : stmt.bind(session.store.id)).all()).results);
@@ -440,18 +415,20 @@ async function handle(request, env) {
 
   // stores
   if (path === "/api/admin/stores" && method === "GET") {
-    return json((await env.DB.prepare(
-      `SELECT s.id,s.name,s.region,s.username,s.active,s.total_staff,s.created_at,s.last_login,
+    await ensurePasswords(env);
+    const last = await env.DB.prepare("SELECT at,total,added,disabled FROM sync_log ORDER BY id DESC LIMIT 1").first();
+    return json({ lastSync: last || null, stores: (await env.DB.prepare(
+      `SELECT s.id,s.name,s.region,s.city,s.area_manager,s.rom,s.username,s.active,s.total_staff,s.created_at,s.last_login,
          (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations,
          (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted' AND e.submitted_at >= strftime('%Y-%m-01')) month_done
        FROM stores s ORDER BY s.username COLLATE NOCASE`
-    ).all()).results);
+    ).all()).results });
   }
   if (path === "/api/admin/stores/passwords" && method === "GET") {
+    await ensurePasswords(env);
     const rows = (await env.DB.prepare("SELECT id,password_enc FROM stores").all()).results;
     return json(Object.fromEntries(await Promise.all(rows.map(async (r) => [r.id, await decryptPassword(env, r.password_enc)]))));
   }
-  if (path === "/api/admin/stores/import" && method === "POST") return json(await importStores(env, await body()));
   if ((m = path.match(/^\/api\/admin\/stores\/(\d+)$/))) {
     const id = +m[1];
     if (method === "PATCH") {

@@ -67,6 +67,59 @@ function download(wbRows, filename, sheetName = "Sheet1") {
   XLSX.writeFile(wb, filename);
 }
 
+// ---------- reusable sortable + filterable table ----------
+// cols: [{key,label,num?,get?(row),render?(row)->node,nosort?}]; filters: [{key,label,get?(row),show?(value)}]
+function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, rowClass, empty = "Nothing to show.", toolbar = [], maxHeight }) {
+  const st = { sort: sort || null, q: "", f: { ...initial } };
+  const val = (c, r) => (c.get ? c.get(r) : r[c.key]);
+  const fval = (f, r) => (f.get ? f.get(r) : r[f.key]);
+  const tbody = h("tbody"), count = h("span", { class: "muted small" });
+  const heads = cols.map((c) => {
+    const arrow = h("span", { class: "arrow" });
+    const th = h("th", { class: c.nosort ? "" : "sortable", "aria-sort": "none" }, c.nosort ? c.label : h("button", { type: "button", class: "thbtn", onclick: () => { st.sort = st.sort && st.sort.key === c.key ? { key: c.key, dir: -st.sort.dir } : { key: c.key, dir: 1 }; draw(); } }, c.label, arrow));
+    th.arrow = arrow; return th;
+  });
+  const selects = filters.map((f) => {
+    const sel = h("select", { class: "flt", "aria-label": f.label, onchange: (e) => { st.f[f.key] = e.target.value; draw(); } });
+    sel.f = f; return sel;
+  });
+  const search = searchIn ? h("input", { type: "search", class: "flt-search", placeholder: "Search…", "aria-label": "Search", oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); draw(); } }) : null;
+  const clear = h("button", { type: "button", class: "btn ghost sm hidden", onclick: () => { st.f = {}; st.q = ""; if (search) search.value = ""; draw(); } }, "Clear filters");
+
+  function view() {
+    let out = rows.filter((r) => filters.every((f) => !st.f[f.key] || String(fval(f, r) ?? "") === st.f[f.key]) && (!st.q || searchIn(r).toLowerCase().includes(st.q)));
+    if (st.sort) {
+      const c = cols.find((x) => x.key === st.sort.key), d = st.sort.dir;
+      out = [...out].sort((a, b) => {
+        const x = val(c, a), y = val(c, b);
+        if (x == null || x === "") return y == null || y === "" ? 0 : 1;   // empty values always last
+        if (y == null || y === "") return -1;
+        return d * (c.num ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: "base" }));
+      });
+    }
+    return out;
+  }
+  function draw() {
+    for (const s of selects) {                       // option lists follow the other active filters
+      const f = s.f, others = rows.filter((r) => filters.every((g) => g === f || !st.f[g.key] || String(fval(g, r) ?? "") === st.f[g.key]));
+      const vals = [...new Set(others.map((r) => fval(f, r)).filter((v) => v != null && v !== "").map(String))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      if (st.f[f.key] && !vals.includes(st.f[f.key])) vals.push(st.f[f.key]);
+      s.replaceChildren(h("option", { value: "" }, `All ${f.label}`), ...vals.map((v) => h("option", { value: v, selected: st.f[f.key] === v }, f.show ? f.show(v) : v)));
+      s.value = st.f[f.key] || "";
+      s.classList.toggle("on", !!st.f[f.key]);
+    }
+    heads.forEach((th, i) => { const on = st.sort && st.sort.key === cols[i].key; th.setAttribute("aria-sort", on ? (st.sort.dir > 0 ? "ascending" : "descending") : "none"); if (th.arrow) th.arrow.textContent = on ? (st.sort.dir > 0 ? " ▲" : " ▼") : ""; });
+    const out = view(); draw.rows = out;
+    count.textContent = out.length === rows.length ? `${rows.length} row${rows.length === 1 ? "" : "s"}` : `${out.length} of ${rows.length}`;
+    clear.classList.toggle("hidden", !(st.q || Object.values(st.f).some(Boolean)));
+    tbody.replaceChildren(...(out.length ? out.map((r) => { const tr = h("tr", { class: (onRow ? "click " : "") + (rowClass ? rowClass(r) : ""), onclick: onRow ? () => onRow(r) : null }, cols.map((c) => h("td", { class: c.cls || "" }, c.render ? c.render(r) : (val(c, r) ?? "")))); return tr; }) : [h("tr", {}, h("td", { colspan: cols.length, class: "muted" }, empty))]));
+  }
+  const el = h("div", {}, h("div", { class: "gridbar" }, search, selects, clear, h("span", { style: "flex:1" }), count, toolbar),
+    h("div", { class: "table-wrap", style: maxHeight ? `max-height:${maxHeight};overflow:auto` : "" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, heads)), tbody)));
+  draw();
+  return { el, redraw: draw, rows: () => draw.rows, setRows(r) { rows = r; draw(); } };
+}
+
 // ---------- shell ----------
 let session = { role: null };
 const logo = () => h("img", { src: "/logo.png", alt: "½M" });
@@ -321,11 +374,48 @@ async function evalRoute(id) {
 }
 
 // ---------- admin: dashboard ----------
+const MAP_COLS = [
+  { key: "area_manager", label: "Area manager" }, { key: "rom", label: "ROM" }, { key: "region", label: "Region" }, { key: "city", label: "City" },
+];
+const MAP_FILTERS = [{ key: "area_manager", label: "area managers" }, { key: "rom", label: "ROMs" }, { key: "region", label: "regions" }, { key: "city", label: "cities" }];
+const trunc = (s, n = 22) => (s && s.length > n ? s.slice(0, n - 1) + "…" : s || "—");
+const avgCell = (a) => (a == null ? h("span", { class: "muted" }, "—") : h("span", { class: `pct ${pctClass(a)}` }, fmtPct(a)));
+
 async function adminHome() {
   const d = await api("/admin/summary"), t = d.totals;
-  const bars = (rows, link) => rows.map((r) => h("div", { class: "secrow" },
+  const bars = (rows) => rows.map((r) => h("div", { class: "secrow" },
     h("b", {}, r.name), r.avg_pct == null ? h("span", { class: "muted small" }, "No evaluations yet") : h("div", { class: `bar ${pctClass(r.avg_pct)}` }, h("i", { style: `width:${r.avg_pct}%` })),
     h("span", { class: `pct ${pctClass(r.avg_pct)}` }, fmtPct(r.avg_pct))));
+  const stores = d.byStore.map((s) => ({ ...s, avg: s.sum_max ? pct(s.sum_score, s.sum_max) : null }));
+
+  // "View by": roll the stores up by area manager / ROM / region / city
+  const groups = { area_manager: "Area manager", rom: "ROM", region: "Region", city: "City" };
+  let by = "area_manager";
+  const holder = h("div");
+  const tabs = h("div", { class: "tabs", style: "margin-bottom:12px" });
+  const rollup = () => {
+    const m = new Map();
+    for (const s of stores) { const k = s[by] || "(none)"; const g = m.get(k) || { name: k, stores: 0, staff: 0, month: 0, evals: 0, sc: 0, mx: 0 }; g.stores++; g.staff += s.total_staff || 0; g.month += s.month_done || 0; g.evals += s.evaluations; g.sc += s.sum_score; g.mx += s.sum_max; m.set(k, g); }
+    return [...m.values()].map((g) => ({ ...g, avg: g.mx ? pct(g.sc, g.mx) : null }));
+  };
+  const drawBy = () => {
+    tabs.replaceChildren(...Object.entries(groups).map(([k, l]) => h("button", { type: "button", class: "tab" + (k === by ? " on" : ""), onclick: () => { by = k; drawBy(); } }, l)));
+    holder.replaceChildren(grid({
+      rows: rollup(), sort: { key: "name", dir: 1 }, empty: "No data yet.",
+      cols: [{ key: "name", label: groups[by], render: (r) => h("b", {}, r.name) }, { key: "stores", label: "Stores", num: true },
+        { key: "month", label: "Evaluated this month", num: true, render: (r) => (r.staff ? `${r.month} / ${r.staff} staff` : r.month) },
+        { key: "evals", label: "All evaluations", num: true }, { key: "avg", label: "Average score", num: true, render: (r) => avgCell(r.avg) }],
+    }).el);
+  };
+
+  const storeGrid = grid({
+    rows: stores, searchIn: (s) => `${s.username} ${s.name} ${s.area_manager} ${s.rom} ${s.region} ${s.city}`, filters: MAP_FILTERS, sort: { key: "avg", dir: 1 },
+    onRow: (s) => (location.hash = `#/admin/evals?store=${s.id}`), maxHeight: "560px",
+    cols: [{ key: "username", label: "Store ID", render: (s) => h("b", {}, s.username) }, { key: "name", label: "Store" }, ...MAP_COLS,
+      { key: "month_done", label: "This month", num: true, render: (s) => (s.total_staff ? `${s.month_done}/${s.total_staff}` : s.month_done) },
+      { key: "evaluations", label: "All", num: true }, { key: "avg", label: "Average", num: true, render: (s) => avgCell(s.avg) }],
+  });
+  drawBy();
   return shell(h("div", {},
     pageHead("Dashboard", "How well your teams know the task outline."),
     h("div", { class: "grid g4" },
@@ -337,40 +427,33 @@ async function adminHome() {
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "By position"), bars(d.byPosition)),
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Weakest sections"), h("p", { class: "muted small" }, "Lowest “performed” rate across all stores."),
         d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Needs a few more evaluations."))),
-    h("div", { class: "card" }, h("h2", {}, "Stores — lowest score first"),
-      d.byStore.length ? h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "This month", "All evaluations", "Average"].map((x) => h("th", {}, x)))),
-        h("tbody", {}, d.byStore.map((s) => h("tr", { class: "click", onclick: () => (location.hash = `#/admin/evals?store=${s.id}`) }, h("td", {}, h("b", {}, s.username), " ", s.name), h("td", {}, s.total_staff ? `${s.month_done}/${s.total_staff} staff` : s.month_done), h("td", {}, s.evaluations), h("td", {}, h("span", { class: `pct ${pctClass(s.avg_pct)}` }, fmtPct(s.avg_pct)))))))) : h("p", { class: "muted" }, "No stores yet — upload your store list under “Stores”."))), "#/admin");
+    h("div", { class: "card" }, h("h2", {}, "View by"), tabs, holder),
+    h("div", { class: "card" }, h("h2", {}, "Stores"), h("p", { class: "muted small" }, "Click a column to sort, use the filters to narrow down, click a store to see its evaluations."), storeGrid.el)), "#/admin");
 }
 
 // ---------- admin: evaluations ----------
 async function adminEvals(query) {
-  const [list, stores, positions] = await Promise.all([api("/evals"), api("/admin/stores"), api("/positions")]);
-  const f = { store: query.get("store") || "", position: "", status: "submitted", q: "" };
-  const tbody = h("tbody");
-  const count = h("span", { class: "muted small" });
-  const draw = () => {
-    const rows = list.filter((e) => (!f.store || e.store_id == f.store) && (!f.position || e.position_id == f.position) && (!f.status || e.status === f.status) && (!f.q || (e.staff_name + e.staff_code + e.store_name).toLowerCase().includes(f.q)));
-    count.textContent = `${rows.length} evaluation${rows.length === 1 ? "" : "s"}`;
-    tbody.replaceChildren(...rows.map((e) => { const p = pct(e.score, e.max_score); return h("tr", { class: "click", onclick: () => (location.hash = `#/eval/${e.id}`) },
-      h("td", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)), h("td", {}, e.store_name), h("td", {}, e.position_name), h("td", {}, fmtDate(e.submitted_at || e.created_at)),
-      h("td", {}, e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : h("span", { class: `pct ${pctClass(p)}` }, `${fmtPct(p)}`)), h("td", { class: "muted" }, e.status === "draft" ? "" : fmtPct(pct(e.trained_count, e.max_score)))); }));
-    draw.rows = rows;
-  };
-  const sel = (opts, key, allLabel) => h("select", { onchange: (e) => { f[key] = e.target.value; draw(); }, style: "width:auto" }, h("option", { value: "" }, allLabel), opts.map(([v, l]) => h("option", { value: v, selected: String(f[key]) === String(v) }, l)));
+  const list = await api("/evals");
+  const fromStore = query.get("store") && list.find((e) => String(e.store_id) === query.get("store"));
   const exportAll = () => {
-    const rows = [["Store", "Position", "Staff", "Staff ID", "Evaluator", "Submitted", "Score", "Max", "Score %", "Training %"]];
-    draw.rows.filter((e) => e.status === "submitted").forEach((e) => rows.push([e.store_name, e.position_name, e.staff_name, e.staff_code || "", e.evaluator || "", e.submitted_at, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score)]));
+    const rows = [["Store ID", "Store", "Area manager", "ROM", "Region", "City", "Position", "Staff", "Staff ID", "Evaluator", "Submitted", "Score", "Max", "Score %", "Training %"]];
+    g.rows().filter((e) => e.status === "submitted").forEach((e) => rows.push([e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.position_name, e.staff_name, e.staff_code || "", e.evaluator || "", e.submitted_at, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score)]));
     download(rows, `hm-evaluations-${new Date().toISOString().slice(0, 10)}.xlsx`, "Evaluations");
   };
-  const view = shell(h("div", {}, pageHead("Evaluations", "Every evaluation submitted by the stores.", h("button", { class: "btn teal sm", onclick: exportAll }, "Export to Excel")),
-    h("div", { class: "card" },
-      h("div", { class: "row", style: "margin-bottom:12px" },
-        sel(stores.map((s) => [s.id, s.name]), "store", "All stores"), sel(positions.map((p) => [p.id, p.name]), "position", "All positions"),
-        sel([["submitted", "Submitted"], ["draft", "Drafts"]], "status", "All statuses"),
-        h("input", { type: "search", placeholder: "Search staff or store…", style: "max-width:260px", oninput: (e) => { f.q = e.target.value.toLowerCase(); draw(); } }), count),
-      h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Staff", "Store", "Position", "Date", "Score", "Training"].map((x) => h("th", {}, x)))), tbody)))), "#/admin/evals");
-  draw();
-  return view;
+  const g = grid({
+    rows: list.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, when: e.submitted_at || e.created_at })),
+    searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.store_code} ${e.store_name} ${e.area_manager} ${e.rom}`,
+    filters: [{ key: "status", label: "statuses", show: (v) => (v === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
+    initial: { status: "submitted", ...(fromStore ? { store: `${fromStore.store_code} · ${fromStore.store_name}` } : {}) },
+    sort: { key: "when", dir: -1 }, onRow: (e) => (location.hash = `#/eval/${e.id}`), empty: "No evaluations match.",
+    toolbar: [h("button", { class: "btn teal sm", onclick: exportAll }, "Export to Excel")],
+    cols: [{ key: "staff_name", label: "Staff", render: (e) => h("span", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)) },
+      { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, { key: "position_name", label: "Position" }, ...MAP_COLS,
+      { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
+      { key: "pctv", label: "Score", num: true, render: (e) => (e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : avgCell(e.pctv)) },
+      { key: "trainpct", label: "Training", num: true, get: (e) => (e.status === "submitted" ? pct(e.trained_count, e.max_score) : null), render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(pct(e.trained_count, e.max_score)) : "") }],
+  });
+  return shell(h("div", {}, pageHead("Evaluations", "Every evaluation submitted by the stores — sort and filter by store, area manager, ROM, region or city."), h("div", { class: "card" }, g.el)), "#/admin/evals");
 }
 
 // ---------- admin: questions ----------
@@ -439,117 +522,70 @@ function addPositionBox() {
 }
 
 // ---------- admin: stores ----------
-function parseStoreSheet(buf) {
-  const wb = XLSX.read(buf, { type: "array" });
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", blankrows: false });
-  const cell = (r, i) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-  const hi = rows.slice(0, 6).findIndex((r) => r.some((c) => /store|branch|name|id/i.test(String(c))));
-  let cols = { code: -1, name: 0, region: -1, password: -1, staff: -1 };
-  if (hi >= 0) {
-    const head = rows[hi].map((c) => String(c).toLowerCase().trim());
-    const find = (re, not = -1) => head.findIndex((c, i) => i !== not && re.test(c));
-    const code = find(/^(store\s*)?(id|code|no\.?|number)$|store\s*(id|code|no|number)/);
-    let name = find(/name/, code);
-    if (name < 0) name = find(/store|branch/, code);
-    cols = { code, name: name < 0 ? (code === 0 ? 1 : 0) : name, region: find(/region|city|area/), password: find(/pass/), staff: find(/staff|employee|headcount|team/) };
-  }
-  return rows.slice(hi + 1).map((r) => ({ name: cell(r, cols.name), code: cell(r, cols.code), region: cell(r, cols.region), password: cell(r, cols.password), total_staff: cell(r, cols.staff) })).filter((r) => r.name);
-}
-
 async function adminStores() {
-  const stores = await api("/admin/stores");
-  let passwords = null, show = false, query = "";
+  const loaded = await api("/admin/stores");
+  const stores = loaded.stores;
+  let passwords = null, show = false;
   const loginUrl = location.origin;
-  const out = h("div");
-  const tbody = h("tbody");
-  const count = h("h2", {}, "");
-  const showBtn = h("button", { class: "btn ghost", onclick: async () => {
+  const copy = (text, what = "Copied") => navigator.clipboard?.writeText(text).then(() => toast(what), () => toast("Copy failed"));
+
+  const showBtn = h("button", { class: "btn ghost sm", onclick: async () => {
     show = !show;
     if (show && !passwords) { try { passwords = await api("/admin/stores/passwords"); } catch (e) { show = false; return toast(e.message); } }
-    showBtn.textContent = show ? "🙈 Hide passwords" : "👁 Show passwords"; draw();
+    showBtn.textContent = show ? "🙈 Hide passwords" : "👁 Show passwords"; g.redraw();
   } }, "👁 Show passwords");
 
-  const copy = (text, what = "Copied") => navigator.clipboard?.writeText(text).then(() => toast(what), () => toast("Copy failed"));
-  const refreshAll = async () => { const y = scrollY; passwords = show ? await api("/admin/stores/passwords") : null; stores.splice(0, stores.length, ...(await api("/admin/stores"))); draw(); scrollTo(0, y); };
-
-  function draw() {
-    const q = query.trim().toLowerCase();
-    const rows = stores.filter((s) => !q || `${s.username} ${s.name} ${s.region || ""}`.toLowerCase().includes(q));
-    count.textContent = `All stores (${stores.length})`;
-    tbody.replaceChildren(...rows.map((s) => {
-      const pw = passwords?.[s.id];
-      const staff = h("input", { type: "text", inputmode: "numeric", value: s.total_staff ?? "", placeholder: "—", style: "width:84px", "aria-label": `Total staff for ${s.name}`,
-        onchange: async (e) => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { total_staff: e.target.value.trim() } }); s.total_staff = e.target.value.trim() === "" ? null : +e.target.value; toast("Saved"); } catch (ex) { toast(ex.message); e.target.value = s.total_staff ?? ""; } } });
-      return h("tr", { class: s.active ? "" : "off" },
-        h("td", {}, h("b", {}, s.username)),
-        h("td", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled")),
-        h("td", { class: "mono" }, show ? (pw ? h("button", { class: "pwcell", title: "Click to copy", onclick: () => copy(pw, `Password for ${s.username} copied`) }, pw) : h("span", { class: "muted" }, "reset needed")) : "••••••"),
-        h("td", {}, staff),
-        h("td", {}, s.total_staff ? h("span", { class: `pct ${pctClass(pct(s.month_done, s.total_staff))}` }, `${s.month_done}/${s.total_staff}`) : h("span", { class: "muted" }, s.month_done)),
-        h("td", {}, h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
-          h("button", { class: "btn ghost sm", onclick: () => resetPw(s) }, "🔑 Reset password"),
-          h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); await refreshAll(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),
-          h("button", { class: "icon del", title: "Delete store", "aria-label": `Delete ${s.name}`, onclick: async () => { if (!(await confirmBox("Delete store?", `${s.username} · ${s.name} will be removed. Stores with evaluations can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); await refreshAll(); } catch (e) { toast(e.message); } } }, "🗑"))));
-    }));
-    if (!rows.length) tbody.replaceChildren(h("tr", {}, h("td", { colspan: 6, class: "muted" }, stores.length ? "No store matches your search." : "No stores yet — upload your store list above.")));
-  }
+  const refresh = async () => { const y = scrollY; const r = await api("/admin/stores"); stores.splice(0, stores.length, ...r.stores); if (show) passwords = await api("/admin/stores/passwords"); g.setRows(stores); scrollTo(0, y); };
 
   async function resetPw(s) {
     const input = h("input", { type: "text", placeholder: "Leave empty for a random password", maxlength: 40 });
     const v = await modal(`Reset password — ${s.username}`, h("div", {}, h("p", { class: "muted small" }, `${s.name}. Anyone signed in with the old password is signed out.`), input),
       (close) => [h("button", { class: "btn ghost", onclick: () => close(null) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(input.value.trim() || "") }, "Reset")]);
     if (v === null) return;
-    try { const r = await api(`/admin/stores/${s.id}/reset-password`, { method: "POST", body: v ? { password: v } : {} }); passwords = { ...(passwords || {}), [s.id]: r.password }; toast(`New password for ${s.username}: ${r.password}`); if (!show) showBtn.click(); else draw(); }
-    catch (e) { toast(e.message); }
-  }
-
-  const credRows = () => [["Store ID", "Store name", "Password", "Total staff", "Login URL"], ...stores.map((s) => [s.username, s.name, passwords?.[s.id] ?? "", s.total_staff ?? "", loginUrl])];
-  const downloadCreds = async () => { try { passwords = await api("/admin/stores/passwords"); download(credRows(), `store-logins-${new Date().toISOString().slice(0, 10)}.xlsx`, "Stores"); } catch (e) { toast(e.message); } };
-
-  async function importRows(rows) {
-    const status = h("p", { class: "muted" }, "Saving stores…"); out.replaceChildren(status);
-    const results = [];
     try {
-      for (let i = 0; i < rows.length; i += 8) {
-        status.textContent = `Saving stores… ${Math.min(i + 8, rows.length)}/${rows.length}`;
-        results.push(...(await api("/admin/stores/import", { method: "POST", body: { stores: rows.slice(i, i + 8) } })).results);
-      }
+      const r = await api(`/admin/stores/${s.id}/reset-password`, { method: "POST", body: v ? { password: v } : {} });
+      passwords = { ...(passwords || (await api("/admin/stores/passwords"))), [s.id]: r.password };
+      toast(`New password for ${s.username}: ${r.password}`);
+      if (!show) showBtn.click(); else g.redraw();
     } catch (e) { toast(e.message); }
-    const c = results.filter((r) => r.status === "created").length, u = results.filter((r) => r.status === "updated").length;
-    out.replaceChildren(h("div", { class: "ok" }, `${c} store${c === 1 ? "" : "s"} created${u ? `, ${u} updated` : ""}. Passwords are in the list below — use “Show passwords” or “Download logins”.`));
-    await refreshAll();
   }
 
-  async function onFile(file) {
-    if (!file) return;
-    try {
-      const rows = parseStoreSheet(await file.arrayBuffer());
-      if (!rows.length) return toast("No store names found in that file");
-      out.replaceChildren(h("div", { class: "card" }, h("h2", {}, `${rows.length} store${rows.length === 1 ? "" : "s"} found`),
-        h("p", { class: "muted small" }, "New Store IDs are created with a random 6-character password (or the one in your file). Store IDs that already exist are updated and keep their password."),
-        h("div", { class: "table-wrap", style: "max-height:260px;overflow:auto" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store ID", "Store name", "Password", "Total staff"].map((x) => h("th", {}, x)))), h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, r.code || h("span", { class: "muted" }, "auto")), h("td", {}, r.name), h("td", {}, r.password ? "from file" : h("span", { class: "muted" }, "auto")), h("td", {}, r.total_staff)))))),
-        h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn teal", onclick: () => importRows(rows) }, `Save ${rows.length} store${rows.length === 1 ? "" : "s"}`), h("button", { class: "btn ghost", onclick: () => out.replaceChildren() }, "Cancel"))));
-    } catch (e) { toast("Could not read that file — use .xlsx or .csv"); }
-  }
-  const fileInput = h("input", { type: "file", accept: ".xlsx,.xls,.csv", class: "hidden", onchange: (e) => { onFile(e.target.files[0]); e.target.value = ""; } });
-  const drop = h("div", { class: "drop", onclick: () => fileInput.click(),
-    ondragover: (e) => { e.preventDefault(); drop.classList.add("over"); }, ondragleave: () => drop.classList.remove("over"),
-    ondrop: (e) => { e.preventDefault(); drop.classList.remove("over"); onFile(e.dataTransfer.files[0]); } },
-    h("b", {}, "Drop your store list here, or click to choose a file"), h("div", { class: "muted small" }, "Excel (.xlsx) or CSV · columns: Store ID, Store name, Total staff (optional), Password (optional)"), fileInput);
+  const credRows = (rows) => [["Store ID", "Store", "Password", "Area manager", "ROM", "Region", "City", "Total staff", "Login URL"],
+    ...rows.map((s) => [s.username, s.name, passwords?.[s.id] ?? "", s.area_manager, s.rom, s.region, s.city, s.total_staff ?? "", loginUrl])];
+  const downloadCreds = async () => {
+    try { passwords = await api("/admin/stores/passwords"); download(credRows(g.rows()), `store-logins-${new Date().toISOString().slice(0, 10)}.xlsx`, "Stores"); }
+    catch (e) { toast(e.message); }
+  };
 
-  const template = () => download([["Store ID", "Store Name", "Total Staff", "Password"], ["HM001", "ABM Main Storage", 12, ""], ["HM002", "Abha Dabab Main Storage", 14, ""]], "stores-template.xlsx", "Stores");
-  const search = h("input", { type: "search", placeholder: "Search…", style: "max-width:240px", oninput: (e) => { query = e.target.value; draw(); } });
+  const g = grid({
+    rows: stores, sort: { key: "username", dir: 1 }, rowClass: (s) => (s.active ? "" : "off"), empty: "No stores yet — the weekly sync fills this list.",
+    searchIn: (s) => `${s.username} ${s.name} ${s.area_manager || ""} ${s.rom || ""} ${s.region || ""} ${s.city || ""}`,
+    filters: [...MAP_FILTERS, { key: "active", label: "statuses", get: (s) => (s.active ? "1" : "0"), show: (v) => (v === "1" ? "Active" : "Disabled") }],
+    toolbar: [showBtn, h("button", { class: "btn teal sm", onclick: downloadCreds }, "Download logins (Excel)")],
+    cols: [
+      { key: "username", label: "Store ID", render: (s) => h("b", {}, s.username) },
+      { key: "name", label: "Store", render: (s) => h("span", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled")) },
+      ...MAP_COLS,
+      { key: "pw", label: "Password", nosort: true, cls: "mono", render: (s) => { const pw = passwords?.[s.id]; return show ? (pw ? h("button", { class: "pwcell", title: "Click to copy", onclick: () => copy(pw, `Password for ${s.username} copied`) }, pw) : h("span", { class: "muted" }, "—")) : "••••••"; } },
+      { key: "total_staff", label: "Total staff", num: true, render: (s) => h("input", { type: "text", inputmode: "numeric", value: s.total_staff ?? "", placeholder: "—", style: "width:72px", "aria-label": `Total staff for ${s.name}`,
+        onclick: (e) => e.stopPropagation(),
+        onchange: async (e) => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { total_staff: e.target.value.trim() } }); s.total_staff = e.target.value.trim() === "" ? null : +e.target.value; toast("Saved"); } catch (ex) { toast(ex.message); e.target.value = s.total_staff ?? ""; } } }) },
+      { key: "month_done", label: "This month", num: true, render: (s) => (s.total_staff ? h("span", { class: `pct ${pctClass(pct(s.month_done, s.total_staff))}` }, `${s.month_done}/${s.total_staff}`) : h("span", { class: "muted" }, s.month_done)) },
+      { key: "actions", label: "", nosort: true, render: (s) => h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
+        h("button", { class: "btn ghost sm", onclick: () => resetPw(s) }, "🔑 Reset"),
+        h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); await refresh(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),
+        h("button", { class: "icon del", title: "Delete store", "aria-label": `Delete ${s.name}`, onclick: async () => { if (!(await confirmBox("Delete store?", `${s.username} · ${s.name} will be removed. Stores with evaluations can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); await refresh(); } catch (e) { toast(e.message); } } }, "🗑")) },
+    ],
+  });
 
-  const view = shell(h("div", {},
-    pageHead("Stores", "One login per store. The Store ID is the username; you control every password.", h("button", { class: "btn ghost sm", onclick: template }, "Download template")),
-    h("div", { class: "card" }, drop), out,
+  const ls = loaded.lastSync;
+  return shell(h("div", {},
+    pageHead("Stores", "Stores, area managers, ROMs, regions and cities come from the AM & ROM Mapping file. The Store ID is the login; you control every password."),
     h("div", { class: "card" },
-      h("div", { class: "row spread", style: "margin-bottom:12px" },
-        h("div", {}, count, h("div", { class: "row small muted", style: "margin-top:4px" }, `Sign-in page: ${loginUrl}`, h("button", { class: "btn ghost sm", onclick: () => copy(loginUrl, "Link copied") }, "Copy"))),
-        h("div", { class: "row" }, search, showBtn, h("button", { class: "btn teal", onclick: downloadCreds }, "Download logins (Excel)"))),
-      h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store ID", "Store name", "Password", "Total staff", "Evaluated this month", ""].map((x) => h("th", {}, x)))), tbody)))), "#/admin/stores");
-  draw();
-  return view;
+      h("div", { class: "row spread small muted", style: "margin-bottom:12px" },
+        h("span", {}, ls ? `Synced weekly from “AM & ROM Mapping” · last sync ${fmtDate(ls.at)} · ${ls.total} stores` : "Waiting for the first sync from “AM & ROM Mapping”."),
+        h("span", { class: "row" }, `Sign-in page: ${loginUrl}`, h("button", { class: "btn ghost sm", onclick: () => copy(loginUrl, "Link copied") }, "Copy"))),
+      g.el)), "#/admin/stores");
 }
 
 // ---------- router ----------
