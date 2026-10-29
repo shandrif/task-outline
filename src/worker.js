@@ -3,7 +3,8 @@
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // 12 h
-const PBKDF2_ITERS = 50000;
+// Low on purpose: passwords are random 10-char strings (~57 bits), and 50k iterations (~27 ms CPU) would break the 10 ms Workers Free limit.
+const PBKDF2_ITERS = 3000;
 const MAX_ATTEMPTS = 8;
 const ATTEMPT_WINDOW = 15 * 60; // seconds
 
@@ -449,7 +450,7 @@ async function handle(request, env) {
   if ((m = path.match(/^\/api\/admin\/stores\/(\d+)\/reset-password$/)) && method === "POST") {
     const b = await body().catch(() => ({}));
     const password = str(b.password, 100, "Password") || randomPassword();
-    if (password.length < 6) throw bad("Password must be at least 6 characters");
+    if (password.length < 8) throw bad("Password must be at least 8 characters");
     // bumping pw_version signs out any device still logged in with the old password
     await env.DB.prepare("UPDATE stores SET password_hash=?, pw_version=pw_version+1 WHERE id=?").bind(await hashPassword(password), +m[1]).run();
     return json({ password });
