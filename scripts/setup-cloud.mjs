@@ -40,7 +40,10 @@ console.log(out);
 
 step("Setting secrets");
 const adminPassword = env.ADMIN_PASSWORD || randomBytes(9).toString("base64url");
-wr(["secret", "put", "SESSION_SECRET"], { input: randomBytes(32).toString("hex") });
+// Only create these once: replacing PASSWORD_KEY would make existing store passwords unreadable.
+const have = JSON.parse(wr(["secret", "list", "--format", "json"])).map((x) => x.name);
+if (!have.includes("SESSION_SECRET")) wr(["secret", "put", "SESSION_SECRET"], { input: randomBytes(32).toString("hex") });
+if (!have.includes("PASSWORD_KEY")) wr(["secret", "put", "PASSWORD_KEY"], { input: randomBytes(32).toString("hex") });
 wr(["secret", "put", "ADMIN_PASSWORD"], { input: adminPassword });
 writeFileSync("credentials-admin.txt", `username: admin\npassword: ${adminPassword}\n`);
 const url = (out.match(/https:\/\/[^\s]+\.workers\.dev/) || [""])[0];

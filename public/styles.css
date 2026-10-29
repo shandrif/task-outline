@@ -196,3 +196,6 @@ tr.click { cursor: pointer; } tr.click:hover td { background: rgba(212,179,139,.
   h1 { font-size: 26px; }
   .secrow { grid-template-columns: 1fr 60px; } .secrow .bar { grid-column: 1 / -1; grid-row: 2; }
 }
+.pwcell { border: 0; background: rgba(132,198,178,.35); border-radius: 8px; padding: 3px 10px; font: inherit; letter-spacing: .06em; cursor: pointer; }
+.pwcell:hover { background: var(--teal); }
+tr.off td { opacity: .55; }

@@ -3,8 +3,6 @@
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // 12 h
-// Low on purpose: passwords are random 10-char strings (~57 bits), and 50k iterations (~27 ms CPU) would break the 10 ms Workers Free limit.
-const PBKDF2_ITERS = 3000;
 const MAX_ATTEMPTS = 8;
 const ATTEMPT_WINDOW = 15 * 60; // seconds
 
@@ -44,26 +42,26 @@ async function safeEqual(secret, a, b) {
   return d === 0;
 }
 
-async function hashPassword(password, iters = PBKDF2_ITERS) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iters }, key, 256);
-  return `pbkdf2$${iters}$${b64u(salt)}$${b64u(bits)}`;
+// Passwords are stored encrypted (not hashed) so the admin can show them again. AES-GCM, key from PASSWORD_KEY secret.
+async function aesKey(env) {
+  if (!env.PASSWORD_KEY) throw new HttpError(500, "PASSWORD_KEY is not configured");
+  return crypto.subtle.importKey("raw", await crypto.subtle.digest("SHA-256", enc.encode(env.PASSWORD_KEY)), "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function encryptPassword(env, password) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(env), enc.encode(password));
+  return `${b64u(iv)}.${b64u(ct)}`;
+}
+async function decryptPassword(env, stored) {
+  if (!stored) return null;
+  try {
+    const [iv, ct] = stored.split(".");
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64u(iv) }, await aesKey(env), unb64u(ct)));
+  } catch { return null; }
 }
 
-async function verifyPassword(password, stored) {
-  const [alg, iters, salt, hash] = (stored || "").split("$");
-  if (alg !== "pbkdf2") return false;
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: unb64u(salt), iterations: +iters }, key, 256));
-  const want = unb64u(hash);
-  let d = bits.length ^ want.length;
-  for (let i = 0; i < bits.length; i++) d |= bits[i] ^ (want[i] ?? 0);
-  return d === 0;
-}
-
-const PW_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-function randomPassword(len = 10) {
+const PW_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I — easy to type on a shared device
+function randomPassword(len = 6) {
   const r = crypto.getRandomValues(new Uint8Array(len));
   return Array.from(r, (x) => PW_ALPHABET[x % PW_ALPHABET.length]).join("");
 }
@@ -127,7 +125,8 @@ async function login(env, request) {
     return json({ role: "admin" }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
   }
   const s = await env.DB.prepare("SELECT * FROM stores WHERE username=?").bind(username).first();
-  if (!s || !s.active || !(await verifyPassword(password, s.password_hash))) return fail();
+  const stored = s && s.active ? await decryptPassword(env, s.password_enc) : null;
+  if (stored === null || !(await safeEqual(env.SESSION_SECRET, password, stored))) return fail();
   await env.DB.prepare("UPDATE stores SET last_login=CURRENT_TIMESTAMP WHERE id=? AND (last_login IS NULL OR last_login < datetime('now','-1 hour'))").bind(s.id).run();
   const token = await signSession(env, { role: "store", sid: s.id, pv: s.pw_version });
   return json({ role: "store", store: { id: s.id, name: s.name } }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
@@ -216,47 +215,58 @@ async function submitEvaluation(env, session, id) {
 }
 
 async function saveAnswers(env, session, id, body) {
-  const ev = await env.DB.prepare("SELECT store_id,status,position_id,answers_json,skips_json FROM evaluations WHERE id=?").bind(id).first();
+  const ev = await env.DB.prepare("SELECT store_id,status,answers_json,skips_json FROM evaluations WHERE id=?").bind(id).first();
   if (!ev || ev.store_id !== session.store.id) throw new HttpError(404, "Evaluation not found");
   if (ev.status !== "draft") throw bad("This evaluation is already submitted");
-  const valid = new Set((await env.DB.prepare(
-    "SELECT i.id FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? AND i.kind='question' AND i.active=1 AND s.active=1"
-  ).bind(ev.position_id).all()).results.map((r) => r.id));
+  // Item ids are not checked against the question list here (saves stay cheap); evaluationDetail/submit only ever read known items.
   const tri = (v) => (v === 1 || v === 0 ? v : null);
   const answers = JSON.parse(ev.answers_json || "{}");
   let n = 0;
   for (const a of (body.answers || []).slice(0, 500)) {
-    if (!valid.has(a.item_id)) continue;
+    if (!Number.isInteger(a.item_id) || a.item_id < 1) continue;
     answers[a.item_id] = [tri(a.trained), tri(a.performed)];
     n++;
   }
   let skips = ev.skips_json;
-  if (Array.isArray(body.skip)) {
-    const secIds = new Set((await env.DB.prepare("SELECT id FROM sections WHERE position_id=?").bind(ev.position_id).all()).results.map((r) => r.id));
-    skips = JSON.stringify(body.skip.filter((x) => secIds.has(x)));
-  }
-  // one row write per save, however many answers changed
-  await env.DB.prepare("UPDATE evaluations SET answers_json=?, skips_json=? WHERE id=?").bind(JSON.stringify(answers), skips, id).run();
+  if (Array.isArray(body.skip)) skips = JSON.stringify(body.skip.filter((x) => Number.isInteger(x)).slice(0, 100));
+  const out = JSON.stringify(answers);
+  if (out.length > 100000) throw bad("Too much data");
+  await env.DB.prepare("UPDATE evaluations SET answers_json=?, skips_json=? WHERE id=?").bind(out, skips, id).run();
   return { saved: n };
 }
 
 // ----- admin: stores -----
 async function importStores(env, body) {
-  const rows = Array.isArray(body.stores) ? body.stores.slice(0, 25) : [];
+  const rows = Array.isArray(body.stores) ? body.stores.slice(0, 10) : [];
   if (!rows.length) throw bad("No stores supplied");
+  const adminUser = (env.ADMIN_USERNAME || "admin").toLowerCase();
+  const staff = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) && n >= 0 ? Math.min(n, 9999) : null; };
   const results = [];
   for (const r of rows) {
     const name = str(r.name, 120, "Store name");
     if (!name) continue;
-    const dup = await env.DB.prepare("SELECT id,username FROM stores WHERE lower(name)=lower(?)").bind(name).first();
-    if (dup) { results.push({ name, status: "exists", username: dup.username }); continue; }
-    let username = slug(r.username || r.code || name) || "store";
-    for (let n = 2; await env.DB.prepare("SELECT 1 FROM stores WHERE username=?").bind(username).first(); n++) username = `${slug(r.username || r.code || name) || "store"}-${n}`;
-    const adminUser = (env.ADMIN_USERNAME || "admin").toLowerCase();
-    if (username === adminUser) username += "-store";
+    const storeId = str(r.code, 40, "Store ID").replace(/\s+/g, "").toUpperCase();
+    const total = staff(r.total_staff);
+    // existing store (matched by Store ID, or by name when no ID is given) -> update details, keep password unless one is supplied
+    const dup = storeId
+      ? await env.DB.prepare("SELECT id,username FROM stores WHERE username=?").bind(storeId).first()
+      : await env.DB.prepare("SELECT id,username FROM stores WHERE lower(name)=lower(?)").bind(name).first();
+    if (dup) {
+      const pw = str(r.password, 100, "Password");
+      await env.DB.prepare("UPDATE stores SET name=?, region=COALESCE(?,region), total_staff=COALESCE(?,total_staff), password_enc=COALESCE(?,password_enc), pw_version=pw_version+? WHERE id=?")
+        .bind(name, str(r.region, 80, "Region") || null, total, pw ? await encryptPassword(env, pw) : null, pw ? 1 : 0, dup.id).run();
+      results.push({ name, status: "updated", username: dup.username });
+      continue;
+    }
+    let username = storeId;
+    if (!username) { // no Store ID supplied: next free HM### number
+      const { m } = await env.DB.prepare("SELECT MAX(CAST(SUBSTR(username,3) AS INTEGER)) m FROM stores WHERE username GLOB 'HM[0-9]*'").first();
+      username = `HM${String((m || 0) + 1).padStart(3, "0")}`;
+    }
+    if (username.toLowerCase() === adminUser) throw bad(`Store ID “${username}” is reserved`);
     const password = str(r.password, 100, "Password") || randomPassword();
-    await env.DB.prepare("INSERT INTO stores (name,code,region,username,password_hash) VALUES (?,?,?,?,?)")
-      .bind(name, str(r.code, 40, "Code") || null, str(r.region, 80, "Region") || null, username, await hashPassword(password)).run();
+    await env.DB.prepare("INSERT INTO stores (name,code,region,username,password_enc,total_staff) VALUES (?,?,?,?,?,?)")
+      .bind(name, username, str(r.region, 80, "Region") || null, username, await encryptPassword(env, password), total).run();
     results.push({ name, status: "created", username, password });
   }
   return { results };
@@ -298,8 +308,10 @@ async function summary(env) {
      FROM positions p LEFT JOIN evaluations e ON e.position_id=p.id AND e.status='submitted' WHERE p.active=1 GROUP BY p.id ORDER BY p.sort,p.id`
   ).all()).results;
   const byStore = (await env.DB.prepare(
-    `SELECT s.id,s.name,COUNT(e.id) evaluations,ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
-     FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY (avg_pct IS NULL), avg_pct ASC, s.name LIMIT 100`
+    `SELECT s.id,s.name,s.username,s.total_staff,COUNT(e.id) evaluations,
+            SUM(CASE WHEN e.submitted_at >= strftime('%Y-%m-01') THEN 1 ELSE 0 END) month_done,
+            ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
+     FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY (avg_pct IS NULL), avg_pct ASC, s.username LIMIT 200`
   ).all()).results;
   // weakest sections across all submitted evaluations
   const weakest = (await env.DB.prepare(
@@ -429,18 +441,25 @@ async function handle(request, env) {
   // stores
   if (path === "/api/admin/stores" && method === "GET") {
     return json((await env.DB.prepare(
-      `SELECT s.id,s.name,s.code,s.region,s.username,s.active,s.created_at,s.last_login,
-         (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations
-       FROM stores s ORDER BY s.name COLLATE NOCASE`
+      `SELECT s.id,s.name,s.region,s.username,s.active,s.total_staff,s.created_at,s.last_login,
+         (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations,
+         (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted' AND e.submitted_at >= strftime('%Y-%m-01')) month_done
+       FROM stores s ORDER BY s.username COLLATE NOCASE`
     ).all()).results);
+  }
+  if (path === "/api/admin/stores/passwords" && method === "GET") {
+    const rows = (await env.DB.prepare("SELECT id,password_enc FROM stores").all()).results;
+    return json(Object.fromEntries(await Promise.all(rows.map(async (r) => [r.id, await decryptPassword(env, r.password_enc)]))));
   }
   if (path === "/api/admin/stores/import" && method === "POST") return json(await importStores(env, await body()));
   if ((m = path.match(/^\/api\/admin\/stores\/(\d+)$/))) {
     const id = +m[1];
     if (method === "PATCH") {
       const b = await body();
-      await env.DB.prepare("UPDATE stores SET name=COALESCE(?,name), region=COALESCE(?,region), active=COALESCE(?,active) WHERE id=?")
-        .bind(b.name != null ? str(b.name, 120, "Store name", { required: true }) : null, b.region != null ? str(b.region, 80, "Region") : null, b.active != null ? (b.active ? 1 : 0) : null, id).run();
+      const total = b.total_staff === "" || b.total_staff === null ? -1 : b.total_staff != null ? parseInt(b.total_staff, 10) : null;
+      if (total !== null && (!Number.isFinite(total) || total > 9999)) throw bad("Total staff must be a number");
+      await env.DB.prepare("UPDATE stores SET name=COALESCE(?,name), region=COALESCE(?,region), active=COALESCE(?,active), total_staff=CASE WHEN ? IS NULL THEN total_staff WHEN ? < 0 THEN NULL ELSE ? END WHERE id=?")
+        .bind(b.name != null ? str(b.name, 120, "Store name", { required: true }) : null, b.region != null ? str(b.region, 80, "Region") : null, b.active != null ? (b.active ? 1 : 0) : null, total, total, total, id).run();
       return json({ ok: true });
     }
     if (method === "DELETE") {
@@ -453,9 +472,9 @@ async function handle(request, env) {
   if ((m = path.match(/^\/api\/admin\/stores\/(\d+)\/reset-password$/)) && method === "POST") {
     const b = await body().catch(() => ({}));
     const password = str(b.password, 100, "Password") || randomPassword();
-    if (password.length < 8) throw bad("Password must be at least 8 characters");
+    if (password.length < 4) throw bad("Password must be at least 4 characters");
     // bumping pw_version signs out any device still logged in with the old password
-    await env.DB.prepare("UPDATE stores SET password_hash=?, pw_version=pw_version+1 WHERE id=?").bind(await hashPassword(password), +m[1]).run();
+    await env.DB.prepare("UPDATE stores SET password_enc=?, pw_version=pw_version+1 WHERE id=?").bind(await encryptPassword(env, password), +m[1]).run();
     return json({ password });
   }
 

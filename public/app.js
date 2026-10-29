@@ -338,8 +338,8 @@ async function adminHome() {
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Weakest sections"), h("p", { class: "muted small" }, "Lowest “performed” rate across all stores."),
         d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Needs a few more evaluations."))),
     h("div", { class: "card" }, h("h2", {}, "Stores — lowest score first"),
-      d.byStore.length ? h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "Evaluations", "Average"].map((x) => h("th", {}, x)))),
-        h("tbody", {}, d.byStore.map((s) => h("tr", { class: "click", onclick: () => (location.hash = `#/admin/evals?store=${s.id}`) }, h("td", {}, h("b", {}, s.name)), h("td", {}, s.evaluations), h("td", {}, h("span", { class: `pct ${pctClass(s.avg_pct)}` }, fmtPct(s.avg_pct)))))))) : h("p", { class: "muted" }, "No stores yet — upload your store list under “Stores”."))), "#/admin");
+      d.byStore.length ? h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "This month", "All evaluations", "Average"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, d.byStore.map((s) => h("tr", { class: "click", onclick: () => (location.hash = `#/admin/evals?store=${s.id}`) }, h("td", {}, h("b", {}, s.username), " ", s.name), h("td", {}, s.total_staff ? `${s.month_done}/${s.total_staff} staff` : s.month_done), h("td", {}, s.evaluations), h("td", {}, h("span", { class: `pct ${pctClass(s.avg_pct)}` }, fmtPct(s.avg_pct)))))))) : h("p", { class: "muted" }, "No stores yet — upload your store list under “Stores”."))), "#/admin");
 }
 
 // ---------- admin: evaluations ----------
@@ -443,43 +443,81 @@ function parseStoreSheet(buf) {
   const wb = XLSX.read(buf, { type: "array" });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", blankrows: false });
   const cell = (r, i) => (i >= 0 ? String(r[i] ?? "").trim() : "");
-  let hi = rows.slice(0, 6).findIndex((r) => r.some((c) => /store|branch|name/i.test(String(c))));
-  let cols = { name: 0, code: -1, region: -1, username: -1, password: -1 };
+  const hi = rows.slice(0, 6).findIndex((r) => r.some((c) => /store|branch|name|id/i.test(String(c))));
+  let cols = { code: -1, name: 0, region: -1, password: -1, staff: -1 };
   if (hi >= 0) {
-    const head = rows[hi].map((c) => String(c).toLowerCase());
-    const find = (re) => head.findIndex((c) => re.test(c));
-    cols = { name: Math.max(0, find(/name|store|branch/)), code: find(/code|number|no\.?$|id/), region: find(/region|city|area/), username: find(/user/), password: find(/pass/) };
-    if (cols.code === cols.name) cols.code = -1;
+    const head = rows[hi].map((c) => String(c).toLowerCase().trim());
+    const find = (re, not = -1) => head.findIndex((c, i) => i !== not && re.test(c));
+    const code = find(/^(store\s*)?(id|code|no\.?|number)$|store\s*(id|code|no|number)/);
+    let name = find(/name/, code);
+    if (name < 0) name = find(/store|branch/, code);
+    cols = { code, name: name < 0 ? (code === 0 ? 1 : 0) : name, region: find(/region|city|area/), password: find(/pass/), staff: find(/staff|employee|headcount|team/) };
   }
-  return rows.slice(hi + 1).map((r) => ({ name: cell(r, cols.name), code: cell(r, cols.code), region: cell(r, cols.region), username: cell(r, cols.username), password: cell(r, cols.password) })).filter((r) => r.name);
+  return rows.slice(hi + 1).map((r) => ({ name: cell(r, cols.name), code: cell(r, cols.code), region: cell(r, cols.region), password: cell(r, cols.password), total_staff: cell(r, cols.staff) })).filter((r) => r.name);
 }
 
 async function adminStores() {
   const stores = await api("/admin/stores");
-  const out = h("div");
+  let passwords = null, show = false, query = "";
   const loginUrl = location.origin;
+  const out = h("div");
+  const tbody = h("tbody");
+  const count = h("h2", {}, "");
+  const showBtn = h("button", { class: "btn ghost", onclick: async () => {
+    show = !show;
+    if (show && !passwords) { try { passwords = await api("/admin/stores/passwords"); } catch (e) { show = false; return toast(e.message); } }
+    showBtn.textContent = show ? "🙈 Hide passwords" : "👁 Show passwords"; draw();
+  } }, "👁 Show passwords");
 
-  const showCreds = (results) => {
-    const created = results.filter((r) => r.status === "created");
-    const copy = () => navigator.clipboard?.writeText(created.map((c) => `${c.name}\t${c.username}\t${c.password}`).join("\n")).then(() => toast("Copied"));
-    out.replaceChildren(h("div", { class: "card" },
-      h("div", { class: "row spread" }, h("h2", {}, `${created.length} login${created.length === 1 ? "" : "s"} created`),
-        h("div", { class: "row" }, created.length > 0 && h("button", { class: "btn teal sm", onclick: () => download([["Store", "Username", "Password", "Login URL"], ...created.map((c) => [c.name, c.username, c.password, loginUrl])], `store-credentials-${new Date().toISOString().slice(0, 10)}.xlsx`, "Credentials") }, "Download credentials (Excel)"), created.length > 0 && h("button", { class: "btn ghost sm", onclick: copy }, "Copy"))),
-      created.length > 0 && h("p", { class: "ok", style: "margin:10px 0" }, "Save these now — passwords are stored encrypted and cannot be shown again. You can always reset a store's password later."),
-      h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "Username", "Password", ""].map((x) => h("th", {}, x)))),
-        h("tbody", {}, results.map((r) => h("tr", {}, h("td", {}, r.name), h("td", { class: "mono" }, r.username), h("td", { class: "mono" }, r.password || "—"), h("td", {}, r.status === "exists" ? h("span", { class: "chip warn" }, "already exists") : h("span", { class: "chip good" }, "new")))))))));
-  };
+  const copy = (text, what = "Copied") => navigator.clipboard?.writeText(text).then(() => toast(what), () => toast("Copy failed"));
+  const refreshAll = async () => { const y = scrollY; passwords = show ? await api("/admin/stores/passwords") : null; stores.splice(0, stores.length, ...(await api("/admin/stores"))); draw(); scrollTo(0, y); };
+
+  function draw() {
+    const q = query.trim().toLowerCase();
+    const rows = stores.filter((s) => !q || `${s.username} ${s.name} ${s.region || ""}`.toLowerCase().includes(q));
+    count.textContent = `All stores (${stores.length})`;
+    tbody.replaceChildren(...rows.map((s) => {
+      const pw = passwords?.[s.id];
+      const staff = h("input", { type: "text", inputmode: "numeric", value: s.total_staff ?? "", placeholder: "—", style: "width:84px", "aria-label": `Total staff for ${s.name}`,
+        onchange: async (e) => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { total_staff: e.target.value.trim() } }); s.total_staff = e.target.value.trim() === "" ? null : +e.target.value; toast("Saved"); } catch (ex) { toast(ex.message); e.target.value = s.total_staff ?? ""; } } });
+      return h("tr", { class: s.active ? "" : "off" },
+        h("td", {}, h("b", {}, s.username)),
+        h("td", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled")),
+        h("td", { class: "mono" }, show ? (pw ? h("button", { class: "pwcell", title: "Click to copy", onclick: () => copy(pw, `Password for ${s.username} copied`) }, pw) : h("span", { class: "muted" }, "reset needed")) : "••••••"),
+        h("td", {}, staff),
+        h("td", {}, s.total_staff ? h("span", { class: `pct ${pctClass(pct(s.month_done, s.total_staff))}` }, `${s.month_done}/${s.total_staff}`) : h("span", { class: "muted" }, s.month_done)),
+        h("td", {}, h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
+          h("button", { class: "btn ghost sm", onclick: () => resetPw(s) }, "🔑 Reset password"),
+          h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); await refreshAll(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),
+          h("button", { class: "icon del", title: "Delete store", "aria-label": `Delete ${s.name}`, onclick: async () => { if (!(await confirmBox("Delete store?", `${s.username} · ${s.name} will be removed. Stores with evaluations can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); await refreshAll(); } catch (e) { toast(e.message); } } }, "🗑"))));
+    }));
+    if (!rows.length) tbody.replaceChildren(h("tr", {}, h("td", { colspan: 6, class: "muted" }, stores.length ? "No store matches your search." : "No stores yet — upload your store list above.")));
+  }
+
+  async function resetPw(s) {
+    const input = h("input", { type: "text", placeholder: "Leave empty for a random password", maxlength: 40 });
+    const v = await modal(`Reset password — ${s.username}`, h("div", {}, h("p", { class: "muted small" }, `${s.name}. Anyone signed in with the old password is signed out.`), input),
+      (close) => [h("button", { class: "btn ghost", onclick: () => close(null) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(input.value.trim() || "") }, "Reset")]);
+    if (v === null) return;
+    try { const r = await api(`/admin/stores/${s.id}/reset-password`, { method: "POST", body: v ? { password: v } : {} }); passwords = { ...(passwords || {}), [s.id]: r.password }; toast(`New password for ${s.username}: ${r.password}`); if (!show) showBtn.click(); else draw(); }
+    catch (e) { toast(e.message); }
+  }
+
+  const credRows = () => [["Store ID", "Store name", "Password", "Total staff", "Login URL"], ...stores.map((s) => [s.username, s.name, passwords?.[s.id] ?? "", s.total_staff ?? "", loginUrl])];
+  const downloadCreds = async () => { try { passwords = await api("/admin/stores/passwords"); download(credRows(), `store-logins-${new Date().toISOString().slice(0, 10)}.xlsx`, "Stores"); } catch (e) { toast(e.message); } };
 
   async function importRows(rows) {
-    const results = []; const btnState = h("p", { class: "muted" }, "Creating logins…"); out.replaceChildren(btnState);
+    const status = h("p", { class: "muted" }, "Saving stores…"); out.replaceChildren(status);
+    const results = [];
     try {
-      for (let i = 0; i < rows.length; i += 5) {
-        btnState.textContent = `Creating logins… ${Math.min(i + 5, rows.length)}/${rows.length}`;
-        results.push(...(await api("/admin/stores/import", { method: "POST", body: { stores: rows.slice(i, i + 5) } })).results);
+      for (let i = 0; i < rows.length; i += 8) {
+        status.textContent = `Saving stores… ${Math.min(i + 8, rows.length)}/${rows.length}`;
+        results.push(...(await api("/admin/stores/import", { method: "POST", body: { stores: rows.slice(i, i + 8) } })).results);
       }
     } catch (e) { toast(e.message); }
-    showCreds(results);
-    const fresh = await api("/admin/stores"); tableHolder.replaceChildren(storeTable(fresh));
+    const c = results.filter((r) => r.status === "created").length, u = results.filter((r) => r.status === "updated").length;
+    out.replaceChildren(h("div", { class: "ok" }, `${c} store${c === 1 ? "" : "s"} created${u ? `, ${u} updated` : ""}. Passwords are in the list below — use “Show passwords” or “Download logins”.`));
+    await refreshAll();
   }
 
   async function onFile(file) {
@@ -488,36 +526,30 @@ async function adminStores() {
       const rows = parseStoreSheet(await file.arrayBuffer());
       if (!rows.length) return toast("No store names found in that file");
       out.replaceChildren(h("div", { class: "card" }, h("h2", {}, `${rows.length} store${rows.length === 1 ? "" : "s"} found`),
-        h("p", { class: "muted small" }, "Stores that already exist are skipped. A username and a random password are generated for each new store."),
-        h("div", { class: "table-wrap", style: "max-height:260px;overflow:auto" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "Code", "Region"].map((x) => h("th", {}, x)))), h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, r.name), h("td", {}, r.code), h("td", {}, r.region)))))),
-        h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn teal", onclick: () => importRows(rows) }, `Create ${rows.length} login${rows.length === 1 ? "" : "s"}`), h("button", { class: "btn ghost", onclick: () => out.replaceChildren() }, "Cancel"))));
+        h("p", { class: "muted small" }, "New Store IDs are created with a random 6-character password (or the one in your file). Store IDs that already exist are updated and keep their password."),
+        h("div", { class: "table-wrap", style: "max-height:260px;overflow:auto" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store ID", "Store name", "Password", "Total staff"].map((x) => h("th", {}, x)))), h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, r.code || h("span", { class: "muted" }, "auto")), h("td", {}, r.name), h("td", {}, r.password ? "from file" : h("span", { class: "muted" }, "auto")), h("td", {}, r.total_staff)))))),
+        h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn teal", onclick: () => importRows(rows) }, `Save ${rows.length} store${rows.length === 1 ? "" : "s"}`), h("button", { class: "btn ghost", onclick: () => out.replaceChildren() }, "Cancel"))));
     } catch (e) { toast("Could not read that file — use .xlsx or .csv"); }
   }
-
-  const fileInput = h("input", { type: "file", accept: ".xlsx,.xls,.csv", class: "hidden", onchange: (e) => onFile(e.target.files[0]) });
+  const fileInput = h("input", { type: "file", accept: ".xlsx,.xls,.csv", class: "hidden", onchange: (e) => { onFile(e.target.files[0]); e.target.value = ""; } });
   const drop = h("div", { class: "drop", onclick: () => fileInput.click(),
     ondragover: (e) => { e.preventDefault(); drop.classList.add("over"); }, ondragleave: () => drop.classList.remove("over"),
     ondrop: (e) => { e.preventDefault(); drop.classList.remove("over"); onFile(e.dataTransfer.files[0]); } },
-    h("b", {}, "Drop your store list here, or click to choose a file"), h("div", { class: "muted small" }, "Excel (.xlsx) or CSV · first column = store name · optional columns: Store Code, Region"), fileInput);
+    h("b", {}, "Drop your store list here, or click to choose a file"), h("div", { class: "muted small" }, "Excel (.xlsx) or CSV · columns: Store ID, Store name, Total staff (optional), Password (optional)"), fileInput);
 
-  const storeTable = (rows) => rows.length ? h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store", "Username", "Region", "Evaluations", "Last login", "Status", ""].map((x) => h("th", {}, x)))),
-    h("tbody", {}, rows.map((s) => h("tr", {},
-      h("td", {}, h("b", {}, s.name), s.code && h("div", { class: "small muted" }, s.code)), h("td", { class: "mono" }, s.username), h("td", {}, s.region || "—"), h("td", {}, s.evaluations), h("td", {}, fmtDate(s.last_login)),
-      h("td", {}, s.active ? h("span", { class: "chip good" }, "Active") : h("span", { class: "chip bad" }, "Disabled")),
-      h("td", { class: "row", style: "flex-wrap:nowrap" },
-        h("button", { class: "btn ghost sm", onclick: async () => {
-          if (!(await confirmBox("Reset password?", `A new password will be created for ${s.name}. Anyone signed in with the old one is signed out.`, "Reset"))) return;
-          try { const r = await api(`/admin/stores/${s.id}/reset-password`, { method: "POST", body: {} });
-            await modal("New password", h("div", {}, h("p", {}, s.name), h("p", { class: "mono" }, `Username: ${s.username}`), h("p", { class: "mono" }, `Password: ${r.password}`), h("p", { class: "muted small" }, "Shown once — copy it now.")), (close) => [h("button", { class: "btn teal", onclick: () => close(true) }, "Done")]);
-          } catch (e) { toast(e.message); } } }, "Reset password"),
-        h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); renderRoute(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),
-        h("button", { class: "icon del", title: "Delete store", onclick: async () => { if (!(await confirmBox("Delete store?", `${s.name} will be removed. Stores with evaluations can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); renderRoute(); } catch (e) { toast(e.message); } } }, "✕"))))))) : h("p", { class: "muted" }, "No stores yet.");
-  const tableHolder = h("div", {}, storeTable(stores));
+  const template = () => download([["Store ID", "Store Name", "Total Staff", "Password"], ["HM001", "ABM Main Storage", 12, ""], ["HM002", "Abha Dabab Main Storage", 14, ""]], "stores-template.xlsx", "Stores");
+  const search = h("input", { type: "search", placeholder: "Search…", style: "max-width:240px", oninput: (e) => { query = e.target.value; draw(); } });
 
-  const template = () => download([["Store Name", "Store Code", "Region"], ["HM Riyadh – Olaya", "RYD-01", "Riyadh"], ["HM Jeddah – Tahlia", "JED-01", "Jeddah"]], "stores-template.xlsx", "Stores");
-  return shell(h("div", {}, pageHead("Stores", "Upload your store list to create one login per store.", h("button", { class: "btn ghost sm", onclick: template }, "Download template")),
-    h("div", { class: "card" }, drop), out, h("div", { class: "card" }, h("h2", { style: "margin-bottom:10px" }, `All stores (${stores.length})`), tableHolder),
-    h("p", { class: "muted small" }, `Stores sign in at ${loginUrl} with their username and password. Every store sees all questions for every position.`)), "#/admin/stores");
+  const view = shell(h("div", {},
+    pageHead("Stores", "One login per store. The Store ID is the username; you control every password.", h("button", { class: "btn ghost sm", onclick: template }, "Download template")),
+    h("div", { class: "card" }, drop), out,
+    h("div", { class: "card" },
+      h("div", { class: "row spread", style: "margin-bottom:12px" },
+        h("div", {}, count, h("div", { class: "row small muted", style: "margin-top:4px" }, `Sign-in page: ${loginUrl}`, h("button", { class: "btn ghost sm", onclick: () => copy(loginUrl, "Link copied") }, "Copy"))),
+        h("div", { class: "row" }, search, showBtn, h("button", { class: "btn teal", onclick: downloadCreds }, "Download logins (Excel)"))),
+      h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Store ID", "Store name", "Password", "Total staff", "Evaluated this month", ""].map((x) => h("th", {}, x)))), tbody)))), "#/admin/stores");
+  draw();
+  return view;
 }
 
 // ---------- router ----------

@@ -5,7 +5,7 @@ Web app for evaluating staff knowledge against the HM SBS task outline (Feb 2026
 Stack: Cloudflare Workers (API + static front end) · Cloudflare D1 (database) · plain JS front end, HM brand theme (no build step).
 
 ## What it does
-- **Admin** (`admin` + password): dashboard, add/edit/reorder/remove questions, sections and positions, upload the store list (Excel/CSV) to create one login per store, reset store passwords, view/export every evaluation.
+- **Admin** (`admin` + password): dashboard, add/edit/reorder/remove questions, sections and positions, upload the store list (Excel/CSV: Store ID, Store name, Total staff) — the Store ID is the login, with a viewable 6-character password per store; reset passwords, view/export every evaluation.
 - **Stores**: sign in, pick a position + staff member, answer every question (*Received training* Yes/No, *Performed* Yes/No), autosave, submit, see the score by section, print or download as Excel.
 - Scoring follows the workbook: each *Performed = Yes* scores 1; section % and overall % = score ÷ number of questions. Sections can be marked *Not applicable* (excluded from scoring).
 
@@ -21,7 +21,7 @@ It prints the URL and the generated admin password (also written to `credentials
 ## Run locally
 ```bash
 npm install
-printf 'SESSION_SECRET=%s\nADMIN_PASSWORD=choose-one\n' "$(openssl rand -hex 32)" > .dev.vars
+printf 'SESSION_SECRET=%s\nPASSWORD_KEY=%s\nADMIN_PASSWORD=choose-one\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .dev.vars
 npm run setup:local && npm run dev   # http://localhost:8787
 ```
 
@@ -29,6 +29,6 @@ npm run setup:local && npm run dev   # http://localhost:8787
 Use the **Questions** page in the admin area. To reload from a new workbook: `XLSX=path/to/file.xlsx npm run seed:rebuild` and re-seed a *fresh* database (the seed does not merge into existing data).
 
 ## Security notes
-- Passwords are PBKDF2-hashed; generated passwords are shown once. Resetting a password or disabling a store signs out its devices immediately.
+- Store passwords are encrypted (AES-GCM, key in the `PASSWORD_KEY` secret) so the admin can view/copy them; never reuse them elsewhere. Resetting a password or disabling a store signs out its devices immediately.
 - Sessions are signed HttpOnly cookies; login is rate-limited (8 failures / 15 min per username).
 - Removing a question/section/position only hides it, so past evaluations keep their answers and scores.
