@@ -42,6 +42,14 @@ const guarded = (fn) => async (...a) => {
   catch (e) { if (!["Cancelled", "No changes"].includes(e.message)) toast(e.message); }
 };
 
+// Small in-memory cache for data that rarely changes (position list), so "New evaluation" opens instantly.
+const cache = new Map();
+async function cachedGet(path, ttl = 300000) {
+  const c = cache.get(path);
+  if (c && Date.now() - c.t < ttl) return c.v;
+  const v = await api(path); cache.set(path, { v, t: Date.now() }); return v;
+}
+
 function modal(title, bodyNodes, actions) {
   return new Promise((resolve) => {
     const close = (v) => { bg.remove(); resolve(v); };
@@ -59,31 +67,42 @@ const confirmBox = (title, text, okLabel = "Confirm", danger = false) =>
     h("button", { class: `btn ${danger ? "danger" : "teal"}`, onclick: () => close(true) }, okLabel),
   ]);
 
-function download(wbRows, filename, sheetName = "Sheet1") {
-  const ws = XLSX.utils.aoa_to_sheet(wbRows);
-  ws["!cols"] = wbRows[0].map((_, i) => ({ wch: Math.min(60, Math.max(10, ...wbRows.map((r) => String(r[i] ?? "").length))) }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, filename);
+// The 880 KB Excel library is only fetched the first time someone exports.
+let xlsxReady;
+const loadXlsx = () => (window.XLSX ? Promise.resolve() : (xlsxReady ||= new Promise((resolve, reject) => {
+  const el = document.createElement("script"); el.src = "/vendor/xlsx.full.min.js";
+  el.onload = resolve; el.onerror = () => { xlsxReady = null; reject(new Error("Could not load the Excel exporter — check your connection")); };
+  document.head.append(el);
+})));
+async function download(wbRows, filename, sheetName = "Sheet1") {
+  try {
+    toast("Preparing Excel file…");
+    await loadXlsx();
+    const ws = XLSX.utils.aoa_to_sheet(wbRows);
+    ws["!cols"] = wbRows[0].map((_, i) => ({ wch: Math.min(60, Math.max(10, ...wbRows.map((r) => String(r[i] ?? "").length))) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, filename);
+  } catch (e) { toast(e.message); }
 }
 
 // ---------- reusable sortable + filterable table ----------
 // cols: [{key,label,num?,get?(row),render?(row)->node,nosort?}]; filters: [{key,label,get?(row),show?(value)}]
 function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, rowClass, empty = "Nothing to show.", toolbar = [], maxHeight }) {
-  const st = { sort: sort || null, q: "", f: { ...initial } };
+  const st = { sort: sort || null, q: "", f: { ...initial }, limit: 100 };
   const val = (c, r) => (c.get ? c.get(r) : r[c.key]);
   const fval = (f, r) => (f.get ? f.get(r) : r[f.key]);
   const tbody = h("tbody"), count = h("span", { class: "muted small" });
   const heads = cols.map((c) => {
     const arrow = h("span", { class: "arrow" });
-    const th = h("th", { class: c.nosort ? "" : "sortable", "aria-sort": "none" }, c.nosort ? c.label : h("button", { type: "button", class: "thbtn", onclick: () => { st.sort = st.sort && st.sort.key === c.key ? { key: c.key, dir: -st.sort.dir } : { key: c.key, dir: 1 }; draw(); } }, c.label, arrow));
+    const th = h("th", { class: c.nosort ? "" : "sortable", "aria-sort": "none" }, c.nosort ? c.label : h("button", { type: "button", class: "thbtn", onclick: () => { st.sort = st.sort && st.sort.key === c.key ? { key: c.key, dir: -st.sort.dir } : { key: c.key, dir: 1 }; st.limit = 100; draw(); } }, c.label, arrow));
     th.arrow = arrow; return th;
   });
   const selects = filters.map((f) => {
-    const sel = h("select", { class: "flt", "aria-label": f.label, onchange: (e) => { st.f[f.key] = e.target.value; draw(); } });
+    const sel = h("select", { class: "flt", "aria-label": f.label, onchange: (e) => { st.f[f.key] = e.target.value; st.limit = 100; draw(); } });
     sel.f = f; return sel;
   });
-  const search = searchIn ? h("input", { type: "search", class: "flt-search", placeholder: "Search…", "aria-label": "Search", oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); draw(); } }) : null;
+  const search = searchIn ? h("input", { type: "search", class: "flt-search", placeholder: "Search…", "aria-label": "Search", oninput: (e) => { st.q = e.target.value.trim().toLowerCase(); st.limit = 100; draw(); } }) : null;
   const clear = h("button", { type: "button", class: "btn ghost sm hidden", onclick: () => { st.f = {}; st.q = ""; if (search) search.value = ""; draw(); } }, "Clear filters");
 
   function view() {
@@ -112,7 +131,9 @@ function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, r
     const out = view(); draw.rows = out;
     count.textContent = out.length === rows.length ? `${rows.length} row${rows.length === 1 ? "" : "s"}` : `${out.length} of ${rows.length}`;
     clear.classList.toggle("hidden", !(st.q || Object.values(st.f).some(Boolean)));
-    tbody.replaceChildren(...(out.length ? out.map((r) => { const tr = h("tr", { class: (onRow ? "click " : "") + (rowClass ? rowClass(r) : ""), onclick: onRow ? () => onRow(r) : null }, cols.map((c) => h("td", { class: c.cls || "" }, c.render ? c.render(r) : (val(c, r) ?? "")))); return tr; }) : [h("tr", {}, h("td", { colspan: cols.length, class: "muted" }, empty))]));
+    const shown = out.length > st.limit ? out.slice(0, st.limit) : out;
+    const more = out.length > shown.length ? [h("tr", {}, h("td", { colspan: cols.length, style: "text-align:center" }, h("button", { type: "button", class: "btn ghost sm", onclick: () => { st.limit += 200; draw(); } }, `Show more (${out.length - shown.length} left)`)))] : [];
+    tbody.replaceChildren(...(out.length ? [...shown.map((r) => { const tr = h("tr", { class: (onRow ? "click " : "") + (rowClass ? rowClass(r) : ""), onclick: onRow ? () => onRow(r) : null }, cols.map((c) => h("td", { class: c.cls || "" }, c.render ? c.render(r) : (val(c, r) ?? "")))); return tr; }), ...more] : [h("tr", {}, h("td", { colspan: cols.length, class: "muted" }, empty))]));
   }
   const el = h("div", {}, h("div", { class: "gridbar" }, search, selects, clear, h("span", { style: "flex:1" }), count, toolbar),
     h("div", { class: "table-wrap", style: maxHeight ? `max-height:${maxHeight};overflow:auto` : "" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, heads)), tbody)));
@@ -165,6 +186,7 @@ function loginView() {
 // ---------- store: dashboard ----------
 async function storeHome() {
   const list = await api("/evals");
+  (window.requestIdleCallback || setTimeout)(() => cachedGet("/positions").catch(() => {}));   // warm the "New evaluation" page
   const done = list.filter((e) => e.status === "submitted"), drafts = list.filter((e) => e.status === "draft");
   const avg = pct(done.reduce((n, e) => n + e.score, 0), done.reduce((n, e) => n + e.max_score, 0));
   const row = (e) => h("tr", { class: "click", onclick: () => (location.hash = `#/eval/${e.id}`) },
@@ -184,7 +206,7 @@ async function storeHome() {
 
 // ---------- store: new evaluation ----------
 async function newEvalView() {
-  const positions = await api("/positions");
+  const positions = await cachedGet("/positions");
   let pos = null;
   const err = h("div", { class: "err hidden" });
   const name = h("input", { type: "text", maxlength: 100, required: true, placeholder: "e.g. Ahmed Ali" });
@@ -212,13 +234,13 @@ async function newEvalView() {
 }
 
 // ---------- evaluation: fill-in form ----------
+// Section bodies are built on first open and clicks are handled by one delegated listener per section,
+// so a 31-section / 208-question evaluation stays light on phones.
 async function evalForm(ev) {
   const dirty = new Map();          // item_id -> {trained, performed}
   let skipDirty = false, timer = null, saving = false;
   const skip = new Set(ev.sections.filter((s) => s.skipped).map((s) => s.id));
-  const open = new Set(ev.sections.length === 1 ? [ev.sections[0].id] : []);
-  const refs = [];                  // per section UI refs
-  const state = h("span", { class: "savestate" }, "All changes saved");
+  const state = h("span", { class: "savestate", "aria-live": "polite" }, "All changes saved");
 
   async function flush() {
     if (saving || (!dirty.size && !skipDirty)) return;
@@ -235,86 +257,108 @@ async function evalForm(ev) {
     saving = false;
     if (dirty.size || skipDirty) schedule();
   }
-  const schedule = () => { state.textContent = "Saving…"; clearTimeout(timer); timer = setTimeout(flush, 2000); };
+  const schedule = () => { state.textContent = "Saving…"; clearTimeout(timer); timer = setTimeout(flush, 1500); };
 
-  const overall = h("div", { class: "bar" }, h("i", { style: "width:0" }));
+  const overall = h("div", { class: "bar" }, h("i", { class: "scalebar", style: "width:100%;transform:scaleX(0)" }));
   const overallTxt = h("b", {}, "");
   const scoreTxt = h("span", { class: "muted small" }, "");
 
-  function refresh() {
-    let answered = 0, total = 0, score = 0;
-    for (const r of refs) {
-      const s = r.sec, qs = s.items.filter((i) => i.kind === "question");
-      const a = qs.filter((q) => q.trained !== null && q.performed !== null).length;
-      const sc = qs.filter((q) => q.performed === 1).length;
-      const na = skip.has(s.id);
-      r.el.classList.toggle("na", na); r.el.classList.toggle("done", !na && a === qs.length);
-      r.num.textContent = !na && a === qs.length ? "✓" : r.idx;
-      r.meta.textContent = na ? "Not applicable" : `${a}/${qs.length} answered · score ${sc}/${qs.length}`;
-      r.naBtn.textContent = na ? "Include section" : "Not applicable";
-      if (!na) { answered += a; total += qs.length; score += sc; }
-    }
-    const p = total ? Math.round((100 * answered) / total) : 0;
-    overall.firstChild.style.width = `${p}%`;
-    overallTxt.textContent = `${answered}/${total} answered`;
-    scoreTxt.textContent = answered ? `Score so far: ${score}/${total} (${Math.round((100 * score) / total)}%)` : "";
+  // ---- per-section state, updated incrementally ----
+  const refs = ev.sections.map((s, i) => ({ sec: s, idx: i + 1, qs: s.items.filter((x) => x.kind === "question"), a: 0, sc: 0, body: null }));
+  const calc = (r) => { r.a = 0; r.sc = 0; for (const q of r.qs) { if (q.trained !== null && q.performed !== null) r.a++; if (q.performed === 1) r.sc++; } };
+  refs.forEach(calc);
+
+  function paintSection(r) {
+    const na = skip.has(r.sec.id), n = r.qs.length, done = !na && r.a === n;
+    r.el.classList.toggle("na", na); r.el.classList.toggle("done", done);
+    r.num.textContent = done ? "✓" : r.idx;
+    r.meta.textContent = na ? "Not applicable" : `${r.a}/${n} answered · score ${r.sc}/${n}`;
+    r.naBtn.textContent = na ? "Include section" : "Not applicable";
+  }
+  function paintTotals() {
+    let a = 0, total = 0, score = 0;
+    for (const r of refs) if (!skip.has(r.sec.id)) { a += r.a; total += r.qs.length; score += r.sc; }
+    overall.firstChild.style.transform = `scaleX(${total ? a / total : 0})`;
+    overallTxt.textContent = `${a}/${total} answered`;
+    scoreTxt.textContent = a ? `Score so far: ${score}/${total} (${Math.round((100 * score) / total)}%)` : "";
   }
 
-  function seg(q, field, missingEls) {
-    const y = h("button", { type: "button", class: "y", "aria-label": "Yes" }, "Yes"), n = h("button", { type: "button", class: "n", "aria-label": "No" }, "No");
-    const el = h("div", { class: "seg" }, y, n);
-    const paint = () => { y.classList.toggle("on", q[field] === 1); n.classList.toggle("on", q[field] === 0); el.classList.toggle("missing", false); };
-    const set = (v) => { q[field] = q[field] === v ? null : v; dirty.set(q.id, { trained: q.trained, performed: q.performed }); paint(); schedule(); refresh(); };
-    y.onclick = () => set(1); n.onclick = () => set(0); paint();
-    el.paint = paint; missingEls.push([q, field, el]);
-    return el;
-  }
+  const paintSeg = (seg, v) => { seg.children[0].classList.toggle("on", v === 1); seg.children[1].classList.toggle("on", v === 0); };
+  const mkSeg = (field, v) => {
+    const y = h("button", { type: "button", class: "y" + (v === 1 ? " on" : ""), "data-f": field, "data-v": 1 }, "Yes");
+    const n = h("button", { type: "button", class: "n" + (v === 0 ? " on" : ""), "data-f": field, "data-v": 0 }, "No");
+    return h("div", { class: "seg" }, y, n);
+  };
 
-  const secEls = ev.sections.map((s, idx) => {
-    const marks = [];
-    let counter = 0;
-    const meta = h("span", { class: "muted small" });
-    const num = h("div", { class: "num" }, idx + 1);
-    const naBtn = h("button", { type: "button", class: "btn ghost sm", onclick: () => { skip.has(s.id) ? skip.delete(s.id) : skip.add(s.id); skipDirty = true; schedule(); refresh(); } }, "Not applicable");
+  function buildBody(r) {
+    if (r.body) return;
+    let counter = 0, qi = -1;
     const allBtn = (field, label) => h("button", { type: "button", class: "btn ghost sm", onclick: () => {
-      s.items.filter((i) => i.kind === "question").forEach((q) => { q[field] = 1; dirty.set(q.id, { trained: q.trained, performed: q.performed }); });
-      marks.forEach(([q, , el]) => el.paint()); schedule(); refresh();
+      for (const q of r.qs) { q[field] = 1; dirty.set(q.id, { trained: q.trained, performed: q.performed }); }
+      r.body.querySelectorAll(".q").forEach((row, i) => { const q = r.qs[i]; paintSeg(row.querySelectorAll(".seg")[field === "trained" ? 0 : 1], q[field]); row.querySelectorAll(".missing").forEach((x) => x.classList.remove("missing")); });
+      calc(r); paintSection(r); paintTotals(); schedule();
     } }, label);
-    const body = h("div", { class: "sec-b" },
-      h("div", { class: "sec-tools no-print" }, allBtn("trained", "All trained: Yes"), allBtn("performed", "All performed: Yes"), naBtn),
+    r.body = h("div", { class: "sec-b" },
+      h("div", { class: "sec-tools no-print" }, allBtn("trained", "All trained: Yes"), allBtn("performed", "All performed: Yes"), r.naBtn),
       h("div", { class: "colhead" }, h("span", {}, "Task"), h("span", {}, "Received training"), h("span", {}, "Performed")),
-      s.items.map((i) => {
+      r.sec.items.map((i) => {
         if (i.kind === "heading") { counter = 0; return h("div", { class: "heading" }, i.text); }
         if (i.kind === "note") return h("div", { class: "note", dir: "auto" }, i.text);
-        counter++;
-        return h("div", { class: "q" },
+        counter++; qi++;
+        return h("div", { class: "q", "data-i": qi },
           h("div", { class: "t" }, h("span", { class: "n" }, `${counter}.`), h("span", { dir: "auto" }, i.text)),
-          h("div", {}, h("div", { class: "mlabel" }, "Received training"), seg(i, "trained", marks)),
-          h("div", {}, h("div", { class: "mlabel" }, "Performed"), seg(i, "performed", marks)));
+          h("div", {}, h("div", { class: "mlabel" }, "Received training"), mkSeg("trained", i.trained)),
+          h("div", {}, h("div", { class: "mlabel" }, "Performed"), mkSeg("performed", i.performed)));
       }));
-    const el = h("section", { class: "sec" + (open.has(s.id) ? " open" : "") },
-      h("div", { class: "sec-h", role: "button", tabindex: 0, onclick: () => el.classList.toggle("open"), onkeydown: (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), el.classList.toggle("open")) },
-        num, h("div", { style: "flex:1" }, h("h3", {}, s.title), meta), h("span", { class: "caret" }, "▸")),
-      body);
-    refs.push({ el, sec: s, num, meta, naBtn, body, idx: idx + 1, marks });
-    return el;
+    // one listener for every Yes/No button in the section
+    r.body.addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-f]"); if (!b) return;
+      const row = b.closest(".q"), q = r.qs[+row.dataset.i], f = b.dataset.f, v = +b.dataset.v;
+      q[f] = q[f] === v ? null : v;
+      paintSeg(b.parentElement, q[f]); b.parentElement.classList.remove("missing");
+      dirty.set(q.id, { trained: q.trained, performed: q.performed });
+      calc(r); paintSection(r); paintTotals(); schedule();
+    });
+    r.el.append(r.body);
+  }
+
+  const toggleSection = (r, force) => {
+    const open = force ?? !r.el.classList.contains("open");
+    if (open) buildBody(r);
+    r.el.classList.toggle("open", open);
+    r.head.setAttribute("aria-expanded", open);
+  };
+
+  const secEls = refs.map((r) => {
+    r.meta = h("span", { class: "muted small" });
+    r.num = h("div", { class: "num" }, r.idx);
+    r.naBtn = h("button", { type: "button", class: "btn ghost sm", onclick: () => { const id = r.sec.id; skip.has(id) ? skip.delete(id) : skip.add(id); skipDirty = true; paintSection(r); paintTotals(); schedule(); } }, "Not applicable");
+    r.head = h("div", { class: "sec-h", role: "button", tabindex: 0, "aria-expanded": "false", onclick: () => toggleSection(r), onkeydown: (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggleSection(r)) },
+      r.num, h("div", { style: "flex:1" }, h("h3", {}, r.sec.title), r.meta), h("span", { class: "caret", "aria-hidden": "true" }, "▸"));
+    r.el = h("section", { class: "sec" }, r.head);
+    return r.el;
   });
+  if (refs.length === 1) toggleSection(refs[0], true);
+  refs.forEach(paintSection); paintTotals();
 
   const doSubmit = async () => {
-    // highlight what is still missing and jump to it
+    // jump to the first unanswered question and mark what is missing
     let first = null;
     for (const r of refs) {
       if (skip.has(r.sec.id)) continue;
-      for (const [q, field, el] of r.marks) if (q[field] === null) { el.classList.add("missing"); if (!first) { first = el; r.el.classList.add("open"); } }
+      if (r.a < r.qs.length) {
+        toggleSection(r, true);
+        r.body.querySelectorAll(".q").forEach((row) => { const q = r.qs[+row.dataset.i], segs = row.querySelectorAll(".seg"); ["trained", "performed"].forEach((f, k) => { if (q[f] === null) { segs[k].classList.add("missing"); first ||= segs[k]; } }); });
+      }
     }
     if (first) { toast("Some questions are still unanswered"); first.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
     if (!(await confirmBox("Submit evaluation?", "Once submitted, the answers can no longer be changed.", "Submit"))) return;
     clearTimeout(timer); saving = false; await flush();
-    submit.disabled = true;
+    submitBtns.forEach((b) => (b.disabled = true));
     try { await api(`/evals/${ev.id}/submit`, { method: "POST", body: {} }); toast("Evaluation submitted"); renderRoute(); }
-    catch (e) { toast(e.message); submit.disabled = false; }
+    catch (e) { toast(e.message); submitBtns.forEach((b) => (b.disabled = false)); }
   };
-  const submit = h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation");
+  const submitBtns = [h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation"), h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation")];
 
   const del = h("button", { class: "btn danger sm", onclick: async () => {
     if (!(await confirmBox("Delete this draft?", "All answers entered so far will be lost.", "Delete", true))) return;
@@ -322,15 +366,19 @@ async function evalForm(ev) {
   } }, "Delete draft");
 
   const bar = h("div", { class: "evbar no-print" },
-    h("div", { class: "row spread" }, h("div", {}, h("b", {}, ev.staff_name), " · ", ev.position_name), h("div", { class: "row" }, state, submit)),
+    h("div", { class: "row spread" }, h("div", {}, h("b", {}, ev.staff_name), " · ", ev.position_name), h("div", { class: "row" }, state, submitBtns[0])),
     h("div", { class: "prog row spread" }, h("div", { style: "flex:1" }, overall), overallTxt), scoreTxt);
 
-  const allOpen = h("button", { class: "btn ghost sm", onclick: () => { const anyClosed = refs.some((r) => !r.el.classList.contains("open")); refs.forEach((r) => r.el.classList.toggle("open", anyClosed)); } }, "Expand / collapse all");
-  refresh();
+  // Expand/collapse all: build a few sections per frame so the page never freezes
+  const allOpen = h("button", { class: "btn ghost sm", onclick: async () => {
+    const open = refs.some((r) => !r.el.classList.contains("open"));
+    for (let i = 0; i < refs.length; i += 3) { refs.slice(i, i + 3).forEach((r) => toggleSection(r, open)); if (open) await new Promise(requestAnimationFrame); }
+  } }, "Expand / collapse all");
+
   window.addEventListener("beforeunload", () => { if (dirty.size) flush(); }, { once: true });
   return shell(h("div", {},
     pageHead(`Evaluating ${ev.staff_name}`, `${ev.position_name}${ev.staff_code ? " · ID " + ev.staff_code : ""}. Answers save automatically.`, allOpen, del),
-    bar, secEls, h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation"))), "#/");
+    bar, secEls, h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, submitBtns[1])), "#/");
 }
 
 // ---------- evaluation: result ----------
@@ -590,6 +638,10 @@ async function adminStores() {
 
 // ---------- router ----------
 async function renderRoute() {
+  const slow = setTimeout(() => document.body.classList.add("loading"), 150);   // thin progress bar only if it takes a moment
+  try { await renderRouteInner(); } finally { clearTimeout(slow); document.body.classList.remove("loading"); }
+}
+async function renderRouteInner() {
   const [path, qs] = (location.hash.slice(1) || "/").split("?");
   const query = new URLSearchParams(qs || "");
   let m, view;

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const DB = "hm-staff-evaluation";
+const DB = "hm-staff-evaluation-eu";
 const [file, ...flags] = process.argv.slice(2);
 if (!file) { console.error("Usage: node scripts/sync-mapping.mjs <file.tsv|file.json> [--local] [--dry-run]"); process.exit(1); }
 const local = flags.includes("--local"), dry = flags.includes("--dry-run");

@@ -191,7 +191,7 @@ tr.click { cursor: pointer; } tr.click:hover td { background: rgba(212,179,139,.
 @media (max-width: 700px) {
   .top-in { flex-wrap: wrap; row-gap: 6px; }
   .brand { order: 1; } .who { order: 2; margin-left: auto; }
-  .nav { order: 3; width: 100%; margin: 0; }
+  .nav { order: 3; flex: 1 1 100%; margin: 0; }
   .evbar { top: 92px; }
   h1 { font-size: 26px; }
   .secrow { grid-template-columns: 1fr 60px; } .secrow .bar { grid-column: 1 / -1; grid-row: 2; }
@@ -214,3 +214,65 @@ input.flt-search { width: auto; min-width: 220px; }
 .btn { white-space: nowrap; }
 table.dtable thead th { border-bottom: 0; box-shadow: inset 0 -2px 0 var(--tan); }
 td input[type=text] { padding: 6px 8px; }
+
+/* ===== Motion & touch polish =====
+   Rules of thumb: UI feedback under 200 ms, ease-out for things entering, transform/opacity only,
+   press feedback on every tappable thing, hover effects only on real pointers, nothing animates for keyboard-heavy use. */
+:root { --ease-out: cubic-bezier(.23, 1, .32, 1); }
+button, a, input, select, textarea, .sec-h, .pos-card, .tab { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+html { overscroll-behavior-y: none; }
+main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+.pct, .kpi .v, .score-ring, td, .savestate { font-variant-numeric: tabular-nums; }
+h1, h2 { text-wrap: balance; }
+.table-wrap { -webkit-overflow-scrolling: touch; }
+
+/* press feedback */
+.btn, .tab, .pos-card, .seg button, .icon { transition: transform 140ms var(--ease-out), background-color 140ms var(--ease-out), color 140ms var(--ease-out), opacity 140ms var(--ease-out), box-shadow 140ms var(--ease-out); }
+.btn:active, .tab:active, .pos-card:active, .icon:active { transform: scale(.97); }
+.seg button { transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
+.seg button:active { background: rgba(212,179,139,.35); }
+.btn:hover { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { opacity: .88; }
+  .nav a:hover, .icon:hover, tr.click:hover td { transition: background-color 120ms var(--ease-out); }
+}
+@media (hover: none) { .nav a:hover { background: none; } .nav a.on:hover { background: var(--ink); } tr.click:hover td { background: none; } .icon:hover, .icon.del:hover { background: transparent; color: inherit; } }
+
+/* progress + caret */
+.bar > i { transition: width 220ms var(--ease-out), transform 220ms var(--ease-out); }
+.bar > i.scalebar { transform-origin: left center; will-change: transform; }
+.sec-h .caret { transition: transform 160ms var(--ease-out); }
+
+/* long forms: skip layout/paint for rows that are off-screen */
+.q { content-visibility: auto; contain-intrinsic-size: auto 76px; }
+.sec { contain: layout style; }
+
+/* page + dialog entrances (opacity/transform only) */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes pop { from { opacity: 0; transform: scale(.96); } }
+@keyframes fade { from { opacity: 0; } }
+#app > * { animation: rise 200ms var(--ease-out); }
+.modal-bg { animation: fade 150ms var(--ease-out); }
+.modal { animation: pop 180ms var(--ease-out); transform-origin: center; }
+#toast { transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+
+/* thin loading bar when a screen takes more than ~150 ms */
+@keyframes loadbar { from { transform: scaleX(.04); } to { transform: scaleX(.92); } }
+body.loading::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 3px; background: var(--teal); transform-origin: left; animation: loadbar 1.6s var(--ease-out) forwards; z-index: 100; }
+
+/* bigger targets + no iOS zoom on touch screens */
+@media (pointer: coarse) {
+  .seg button { width: 72px; padding: 11px 0; }
+  .btn.sm { padding: 9px 14px; }
+  .icon { padding: 9px 11px; }
+  .nav a { padding: 11px 14px; }
+  .sec-h { padding: 16px; }
+  input, select, textarea, .flt, .flt-search, input.flt-search { font-size: 16px; }
+}
+@media (max-width: 700px) {
+  .q { padding: 12px 0; }
+  .evbar { padding-top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+}

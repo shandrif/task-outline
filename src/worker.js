@@ -99,22 +99,22 @@ function cookieHeader(request, value, maxAge) {
   return `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
-async function throttle(env, key) {
-  const since = now() - ATTEMPT_WINDOW;
-  await env.DB.prepare("DELETE FROM login_attempts WHERE at < ?").bind(since).run();
-  const { n } = await env.DB.prepare("SELECT COUNT(*) n FROM login_attempts WHERE key=? AND at>=?").bind(key, since).first();
-  if (n >= MAX_ATTEMPTS) throw new HttpError(429, "Too many failed attempts. Try again in 15 minutes.");
-}
-
 // ---------- routes ----------
-async function login(env, request) {
+async function login(env, request, ctx) {
   const body = await request.json().catch(() => ({}));
   const username = str(body.username, 80, "Username", { required: true });
   const password = str(body.password, 200, "Password", { required: true });
   const key = username.toLowerCase();
-  await throttle(env, key);
-  const fail = async () => {
-    await env.DB.prepare("INSERT INTO login_attempts (key,at) VALUES (?,?)").bind(key, now()).run();
+  const since = now() - ATTEMPT_WINDOW;
+  // one round trip: purge old attempts, count recent failures, load the store
+  const [, attempts, found] = await env.DB.batch([
+    env.DB.prepare("DELETE FROM login_attempts WHERE at < ?").bind(since),
+    env.DB.prepare("SELECT COUNT(*) n FROM login_attempts WHERE key=? AND at>=?").bind(key, since),
+    env.DB.prepare("SELECT id,name,active,password_enc,pw_version FROM stores WHERE username=?").bind(username),
+  ]);
+  if (attempts.results[0].n >= MAX_ATTEMPTS) throw new HttpError(429, "Too many failed attempts. Try again in 15 minutes.");
+  const fail = () => {
+    ctx.waitUntil(env.DB.prepare("INSERT INTO login_attempts (key,at) VALUES (?,?)").bind(key, now()).run());
     throw new HttpError(401, "Wrong username or password");
   };
 
@@ -124,25 +124,25 @@ async function login(env, request) {
     const token = await signSession(env, { role: "admin" });
     return json({ role: "admin" }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
   }
-  const s = await env.DB.prepare("SELECT * FROM stores WHERE username=?").bind(username).first();
+  const s = found.results[0];
   const stored = s && s.active ? await decryptPassword(env, s.password_enc) : null;
   if (stored === null || !(await safeEqual(env.SESSION_SECRET, password, stored))) return fail();
-  await env.DB.prepare("UPDATE stores SET last_login=CURRENT_TIMESTAMP WHERE id=? AND (last_login IS NULL OR last_login < datetime('now','-1 hour'))").bind(s.id).run();
+  ctx.waitUntil(env.DB.prepare("UPDATE stores SET last_login=CURRENT_TIMESTAMP WHERE id=? AND (last_login IS NULL OR last_login < datetime('now','-1 hour'))").bind(s.id).run());
   const token = await signSession(env, { role: "store", sid: s.id, pv: s.pw_version });
   return json({ role: "store", store: { id: s.id, name: s.name } }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
 }
 
 // Full question tree for a position (active items only).
 async function positionTree(env, positionId) {
-  const pos = await env.DB.prepare("SELECT id,name FROM positions WHERE id=? AND active=1").bind(positionId).first();
-  if (!pos) throw new HttpError(404, "Position not found");
-  const secs = (await env.DB.prepare("SELECT id,title FROM sections WHERE position_id=? AND active=1 ORDER BY sort,id").bind(positionId).all()).results;
-  const items = (await env.DB.prepare(
-    "SELECT i.id,i.section_id,i.kind,i.text FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? AND s.active=1 AND i.active=1 ORDER BY i.sort,i.id"
-  ).bind(positionId).all()).results;
-  const by = new Map(secs.map((s) => [s.id, { ...s, items: [] }]));
-  for (const it of items) by.get(it.section_id)?.items.push({ id: it.id, kind: it.kind, text: it.text });
-  return { ...pos, sections: [...by.values()] };
+  const [pos, secs, items] = await env.DB.batch([
+    env.DB.prepare("SELECT id,name FROM positions WHERE id=? AND active=1").bind(positionId),
+    env.DB.prepare("SELECT id,title FROM sections WHERE position_id=? AND active=1 ORDER BY sort,id").bind(positionId),
+    env.DB.prepare("SELECT i.id,i.section_id,i.kind,i.text FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? AND s.active=1 AND i.active=1 ORDER BY i.sort,i.id").bind(positionId),
+  ]);
+  if (!pos.results[0]) throw new HttpError(404, "Position not found");
+  const by = new Map(secs.results.map((s) => [s.id, { ...s, items: [] }]));
+  for (const it of items.results) by.get(it.section_id)?.items.push({ id: it.id, kind: it.kind, text: it.text });
+  return { ...pos.results[0], sections: [...by.values()] };
 }
 
 async function listPositions(env) {
@@ -157,20 +157,24 @@ async function listPositions(env) {
 
 // Evaluation detail, with sections/answers. Submitted evaluations keep showing questions that were answered, even if later removed.
 async function evaluationDetail(env, session, id) {
-  const ev = await env.DB.prepare(
-    `SELECT e.*, p.name position_name, st.name store_name FROM evaluations e
-     JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id WHERE e.id=?`
-  ).bind(id).first();
+  const [evRes, secRes, itemRes] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT e.*, p.name position_name, st.name store_name FROM evaluations e
+       JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id WHERE e.id=?`
+    ).bind(id),
+    env.DB.prepare("SELECT id,title,active FROM sections WHERE position_id=(SELECT position_id FROM evaluations WHERE id=?) ORDER BY sort,id").bind(id),
+    env.DB.prepare(
+      "SELECT i.id,i.section_id,i.kind,i.text,i.active FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=(SELECT position_id FROM evaluations WHERE id=?) ORDER BY i.sort,i.id"
+    ).bind(id),
+  ]);
+  const ev = evRes.results[0];
   if (!ev || (session.role === "store" && ev.store_id !== session.store.id)) throw new HttpError(404, "Evaluation not found");
 
   const stored = JSON.parse(ev.answers_json || "{}");
   const answers = new Map(Object.entries(stored).map(([k, v]) => [+k, { trained: v[0], performed: v[1] }]));
   const skips = new Set(JSON.parse(ev.skips_json || "[]"));
   const submitted = ev.status === "submitted";
-  const secs = (await env.DB.prepare("SELECT id,title,active FROM sections WHERE position_id=? ORDER BY sort,id").bind(ev.position_id).all()).results;
-  const items = (await env.DB.prepare(
-    "SELECT i.id,i.section_id,i.kind,i.text,i.active FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? ORDER BY i.sort,i.id"
-  ).bind(ev.position_id).all()).results;
+  const secs = secRes.results, items = itemRes.results;
 
   const sections = [];
   for (const s of secs) {
@@ -215,35 +219,45 @@ async function submitEvaluation(env, session, id) {
 }
 
 async function saveAnswers(env, session, id, body) {
-  const ev = await env.DB.prepare("SELECT store_id,status,answers_json,skips_json FROM evaluations WHERE id=?").bind(id).first();
-  if (!ev || ev.store_id !== session.store.id) throw new HttpError(404, "Evaluation not found");
-  if (ev.status !== "draft") throw bad("This evaluation is already submitted");
-  // Item ids are not checked against the question list here (saves stay cheap); evaluationDetail/submit only ever read known items.
+  // Item ids are not checked against the question list (keeps saves to one query); evaluationDetail/submit only ever read known items.
   const tri = (v) => (v === 1 || v === 0 ? v : null);
-  const answers = JSON.parse(ev.answers_json || "{}");
+  const patch = {};
   let n = 0;
   for (const a of (body.answers || []).slice(0, 500)) {
     if (!Number.isInteger(a.item_id) || a.item_id < 1) continue;
-    answers[a.item_id] = [tri(a.trained), tri(a.performed)];
+    patch[a.item_id] = [tri(a.trained), tri(a.performed)];
     n++;
   }
-  let skips = ev.skips_json;
-  if (Array.isArray(body.skip)) skips = JSON.stringify(body.skip.filter((x) => Number.isInteger(x)).slice(0, 100));
-  const out = JSON.stringify(answers);
-  if (out.length > 100000) throw bad("Too much data");
-  await env.DB.prepare("UPDATE evaluations SET answers_json=?, skips_json=? WHERE id=?").bind(out, skips, id).run();
+  const skips = Array.isArray(body.skip) ? JSON.stringify(body.skip.filter((x) => Number.isInteger(x)).slice(0, 100)) : null;
+  const r = await env.DB.prepare(
+    `UPDATE evaluations SET answers_json=json_patch(answers_json, ?1), skips_json=COALESCE(?2, skips_json)
+     WHERE id=?3 AND store_id=?4 AND status='draft' AND length(answers_json) < 100000`
+  ).bind(JSON.stringify(patch), skips, id, session.store.id).run();
+  if (!r.meta.changes) throw new HttpError(404, "Evaluation not found, or it is already submitted");
   return { saved: n };
 }
 
-// ----- admin: stores -----
-// Stores arrive from the mapping sync without a password; give each a random one the first time an admin looks.
-async function ensurePasswords(env) {
-  const rows = (await env.DB.prepare("SELECT id FROM stores WHERE password_enc IS NULL LIMIT 120").all()).results;
-  for (let i = 0; i < rows.length; i += 40) {
+async function fillPasswords(env, ids) {
+  for (let i = 0; i < ids.length; i += 40) {
     const stmts = [];
-    for (const r of rows.slice(i, i + 40)) stmts.push(env.DB.prepare("UPDATE stores SET password_enc=? WHERE id=? AND password_enc IS NULL").bind(await encryptPassword(env, randomPassword()), r.id));
+    for (const id of ids.slice(i, i + 40)) stmts.push(env.DB.prepare("UPDATE stores SET password_enc=? WHERE id=? AND password_enc IS NULL").bind(await encryptPassword(env, randomPassword()), id));
     await env.DB.batch(stmts);
   }
+}
+const STORES_SQL = `SELECT s.id,s.name,s.region,s.city,s.area_manager,s.rom,s.username,s.active,s.total_staff,s.created_at,s.last_login,
+    (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations,
+    (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted' AND e.submitted_at >= strftime('%Y-%m-01')) month_done
+  FROM stores s ORDER BY s.username COLLATE NOCASE`;
+// Stores arrive from the mapping sync without a password; give each a random one the first time an admin looks.
+async function loadStores(env) {
+  const run = () => env.DB.batch([
+    env.DB.prepare("SELECT id FROM stores WHERE password_enc IS NULL LIMIT 120"),
+    env.DB.prepare("SELECT at,total,added,disabled FROM sync_log ORDER BY id DESC LIMIT 1"),
+    env.DB.prepare(STORES_SQL),
+  ]);
+  let [missing, last, stores] = await run();
+  if (missing.results.length) { await fillPasswords(env, missing.results.map((r) => r.id)); }
+  return { lastSync: last.results[0] || null, stores: stores.results };
 }
 
 // ----- admin: ordering -----
@@ -269,43 +283,41 @@ async function nextSort(env, table, col, val) {
 }
 
 async function summary(env) {
-  const totals = await env.DB.prepare(
-    `SELECT (SELECT COUNT(*) FROM stores WHERE active=1) stores,
-            (SELECT COUNT(*) FROM evaluations WHERE status='submitted') evaluations,
-            (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts,
-            (SELECT ROUND(100.0*SUM(score)/NULLIF(SUM(max_score),0),1) FROM evaluations WHERE status='submitted') avg_pct,
-            (SELECT ROUND(100.0*SUM(trained_count)/NULLIF(SUM(max_score),0),1) FROM evaluations WHERE status='submitted') trained_pct,
-            (SELECT COUNT(*) FROM stores WHERE active=1 AND id IN (SELECT store_id FROM evaluations WHERE status='submitted')) active_stores`
-  ).first();
-  const byPosition = (await env.DB.prepare(
-    `SELECT p.id,p.name,COUNT(e.id) evaluations,ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
-     FROM positions p LEFT JOIN evaluations e ON e.position_id=p.id AND e.status='submitted' WHERE p.active=1 GROUP BY p.id ORDER BY p.sort,p.id`
-  ).all()).results;
-  const byStore = (await env.DB.prepare(
-    `SELECT s.id,s.name,s.username,s.total_staff,s.area_manager,s.rom,s.region,s.city,COUNT(e.id) evaluations,
-            COALESCE(SUM(e.score),0) sum_score, COALESCE(SUM(e.max_score),0) sum_max,
-            SUM(CASE WHEN e.submitted_at >= strftime('%Y-%m-01') THEN 1 ELSE 0 END) month_done,
-            ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
-     FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY s.username LIMIT 300`
-  ).all()).results;
-  // weakest sections across all submitted evaluations
-  const weakest = (await env.DB.prepare(
-    `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
-     FROM eval_sections es JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
-     GROUP BY s.id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8`
-  ).all()).results;
-  return { totals, byPosition, byStore, weakest };
+  const [totals, byPosition, byStore, weakest] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT (SELECT COUNT(*) FROM stores WHERE active=1) stores,
+              (SELECT COUNT(*) FROM evaluations WHERE status='submitted') evaluations,
+              (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts,
+              (SELECT ROUND(100.0*SUM(score)/NULLIF(SUM(max_score),0),1) FROM evaluations WHERE status='submitted') avg_pct,
+              (SELECT ROUND(100.0*SUM(trained_count)/NULLIF(SUM(max_score),0),1) FROM evaluations WHERE status='submitted') trained_pct,
+              (SELECT COUNT(*) FROM stores WHERE active=1 AND id IN (SELECT store_id FROM evaluations WHERE status='submitted')) active_stores`),
+    env.DB.prepare(
+      `SELECT p.id,p.name,COUNT(e.id) evaluations,ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
+       FROM positions p LEFT JOIN evaluations e ON e.position_id=p.id AND e.status='submitted' WHERE p.active=1 GROUP BY p.id ORDER BY p.sort,p.id`),
+    env.DB.prepare(
+      `SELECT s.id,s.name,s.username,s.total_staff,s.area_manager,s.rom,s.region,s.city,COUNT(e.id) evaluations,
+              COALESCE(SUM(e.score),0) sum_score, COALESCE(SUM(e.max_score),0) sum_max,
+              SUM(CASE WHEN e.submitted_at >= strftime('%Y-%m-01') THEN 1 ELSE 0 END) month_done,
+              ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
+       FROM stores s LEFT JOIN evaluations e ON e.store_id=s.id AND e.status='submitted' WHERE s.active=1 GROUP BY s.id ORDER BY s.username LIMIT 300`),
+    // weakest sections across all submitted evaluations
+    env.DB.prepare(
+      `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
+       FROM eval_sections es JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
+       GROUP BY s.id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8`),
+  ]);
+  return { totals: totals.results[0], byPosition: byPosition.results, byStore: byStore.results, weakest: weakest.results };
 }
 
 // ---------- router ----------
-async function handle(request, env) {
+async function handle(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "");
   const method = request.method;
   if (method !== "GET" && method !== "HEAD" && !(request.headers.get("content-type") || "").includes("application/json")) throw bad("Expected JSON");
   let m;
 
-  if (path === "/api/login" && method === "POST") return login(env, request);
+  if (path === "/api/login" && method === "POST") return login(env, request, ctx);
   if (path === "/api/logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": cookieHeader(request, "", 0) });
 
   const session = await readSession(env, request);
@@ -330,10 +342,9 @@ async function handle(request, env) {
   if (path === "/api/evals" && method === "POST") {
     if (isAdmin) throw new HttpError(403, "Evaluations are created from a store account");
     const b = await body();
-    const pos = await env.DB.prepare("SELECT id FROM positions WHERE id=? AND active=1").bind(+b.position_id).first();
-    if (!pos) throw bad("Choose a position");
-    const r = await env.DB.prepare("INSERT INTO evaluations (store_id,position_id,staff_name,staff_code,evaluator,notes) VALUES (?,?,?,?,?,?)")
-      .bind(session.store.id, pos.id, str(b.staff_name, 100, "Staff name", { required: true }), str(b.staff_code, 40, "Staff ID") || null, str(b.evaluator, 100, "Evaluator") || null, str(b.notes, 1000, "Notes") || null).run();
+    const r = await env.DB.prepare("INSERT INTO evaluations (store_id,position_id,staff_name,staff_code,evaluator,notes) SELECT ?,id,?,?,?,? FROM positions WHERE id=? AND active=1")
+      .bind(session.store.id, str(b.staff_name, 100, "Staff name", { required: true }), str(b.staff_code, 40, "Staff ID") || null, str(b.evaluator, 100, "Evaluator") || null, str(b.notes, 1000, "Notes") || null, +b.position_id).run();
+    if (!r.meta.changes) throw bad("Choose a position");
     return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/evals\/(\d+)$/))) {
@@ -415,17 +426,11 @@ async function handle(request, env) {
 
   // stores
   if (path === "/api/admin/stores" && method === "GET") {
-    await ensurePasswords(env);
-    const last = await env.DB.prepare("SELECT at,total,added,disabled FROM sync_log ORDER BY id DESC LIMIT 1").first();
-    return json({ lastSync: last || null, stores: (await env.DB.prepare(
-      `SELECT s.id,s.name,s.region,s.city,s.area_manager,s.rom,s.username,s.active,s.total_staff,s.created_at,s.last_login,
-         (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations,
-         (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted' AND e.submitted_at >= strftime('%Y-%m-01')) month_done
-       FROM stores s ORDER BY s.username COLLATE NOCASE`
-    ).all()).results });
+    return json(await loadStores(env));
   }
   if (path === "/api/admin/stores/passwords" && method === "GET") {
-    await ensurePasswords(env);
+    const missing = (await env.DB.prepare("SELECT id FROM stores WHERE password_enc IS NULL LIMIT 120").all()).results;
+    if (missing.length) await fillPasswords(env, missing.map((r) => r.id));
     const rows = (await env.DB.prepare("SELECT id,password_enc FROM stores").all()).results;
     return json(Object.fromEntries(await Promise.all(rows.map(async (r) => [r.id, await decryptPassword(env, r.password_enc)]))));
   }
@@ -459,12 +464,12 @@ async function handle(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
     if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
     try {
       if (!env.SESSION_SECRET) throw new HttpError(500, "SESSION_SECRET is not configured");
-      return await handle(request, env);
+      return await handle(request, env, ctx);
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message }, e.status);
       console.error(e);

@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 
-const DB = "hm-staff-evaluation";
+const DB = "hm-staff-evaluation-eu";
 const env = { ...process.env };
 env.CLOUDFLARE_API_TOKEN ||= env.CLOUDFLARE_API_KEY;
 if (!env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID) {

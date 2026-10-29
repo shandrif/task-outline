@@ -12,11 +12,13 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "hm-staff-evaluation",
+      "database_name": "hm-staff-evaluation-eu",
       // Replaced automatically by `npm run setup:cloud` (or paste the id from `wrangler d1 create`)
-      "database_id": "ea27baac-dc0f-4446-811a-409a8df4978b",
+      "database_id": "7da39df4-a4ee-435a-be06-0653f8a1873a",
       "migrations_dir": "migrations"
     }
   ],
+  // Runs the Worker next to the database, so the several queries per request are not made across the world
+  "placement": { "mode": "smart" },
   "vars": { "ADMIN_USERNAME": "admin" }
 }
