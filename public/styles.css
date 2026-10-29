@@ -276,3 +276,46 @@ body.loading::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
 }
+
+/* ===== Backdrop: brand glows + dot texture + ½M watermark (static, GPU-composited, no animation) ===== */
+.bg { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(900px 520px at 6% -8%, rgba(132,198,178,.50), transparent 62%),
+    radial-gradient(820px 620px at 104% 4%, rgba(212,179,139,.55), transparent 58%),
+    radial-gradient(760px 520px at 50% 112%, rgba(132,198,178,.30), transparent 62%),
+    radial-gradient(520px 380px at 92% 78%, rgba(212,179,139,.22), transparent 60%),
+    linear-gradient(180deg, #F8F1E8 0%, #F5EDE3 55%, #F1E6D8 100%); }
+.bg::before { content: ""; position: absolute; inset: 0;
+  background: radial-gradient(rgba(29,27,23,.10) 1px, transparent 1.4px) 0 0 / 24px 24px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, rgba(0,0,0,.55) 38%, transparent 78%);
+  mask-image: linear-gradient(to bottom, #000 0, rgba(0,0,0,.55) 38%, transparent 78%); }
+.bg-mark { position: absolute; right: 3vw; bottom: 4vh; width: min(30vw, 380px); aspect-ratio: 772 / 350;
+  background: url(/logo.png) center / contain no-repeat; opacity: .05; }
+@media (max-width: 700px) { .bg-mark { width: 56vw; right: 6vw; bottom: 3vh; opacity: .045; } }
+
+/* glass header + sticky evaluation bar so the backdrop shows through */
+.top { background: rgba(245,237,227,.80); -webkit-backdrop-filter: blur(12px) saturate(1.2); backdrop-filter: blur(12px) saturate(1.2);
+  border-bottom: 0; box-shadow: 0 1px 0 rgba(212,179,139,.55), 0 10px 24px -18px rgba(29,27,23,.35); }
+.evbar { background: rgba(245,237,227,.88); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-bottom: 0; box-shadow: 0 1px 0 rgba(212,179,139,.5); padding-left: 2px; padding-right: 2px; }
+
+/* cards with a little lift */
+.card, .sec, .qe-sec, .kpi, .pos-card { background: rgba(251,247,241,.94); box-shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 12px 28px -18px rgba(29,27,23,.28); }
+.kpi.tealk { background: linear-gradient(135deg, #84C6B2 0%, #9DD3C2 100%); }
+.kpi.tank { background: linear-gradient(135deg, #D4B38B 0%, #E1C8A4 100%); }
+.kpi { position: relative; overflow: hidden; }
+.kpi::after { content: ""; position: absolute; right: -18px; bottom: -22px; width: 92px; height: 92px; border-radius: 50%; background: rgba(255,255,255,.28); }
+.kpi > * { position: relative; z-index: 1; }
+.page-head h1 { background: linear-gradient(90deg, var(--ink) 60%, #4b463c); -webkit-background-clip: text; background-clip: text; }
+.tan-bar { width: 56px; height: 6px; background: linear-gradient(90deg, var(--tan), var(--teal)); }
+.pos-card.on { background: linear-gradient(135deg, #1D1B17, #34302a); }
+.tab.on { background: linear-gradient(135deg, #1D1B17, #34302a); }
+
+/* sign-in screen: brand shapes behind the card */
+.login { position: relative; }
+.login::before, .login::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+.login::before { width: min(60vw, 520px); aspect-ratio: 1; left: -12vw; top: -14vh; background: radial-gradient(circle at 35% 35%, rgba(132,198,178,.75), rgba(132,198,178,0) 70%); }
+.login::after { width: min(56vw, 480px); aspect-ratio: 1; right: -10vw; bottom: -12vh; background: radial-gradient(circle at 60% 60%, rgba(212,179,139,.80), rgba(212,179,139,0) 70%); }
+.login-card { position: relative; z-index: 1; padding: 28px; box-shadow: 0 30px 60px -30px rgba(29,27,23,.45), 0 1px 0 rgba(255,255,255,.9) inset; border-radius: 22px; }
+.login-card .logo { height: 64px; }
+
+@media print { .bg { display: none; } body { background: #fff; } }
