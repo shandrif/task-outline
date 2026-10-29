@@ -128,7 +128,7 @@ async function login(env, request) {
   }
   const s = await env.DB.prepare("SELECT * FROM stores WHERE username=?").bind(username).first();
   if (!s || !s.active || !(await verifyPassword(password, s.password_hash))) return fail();
-  await env.DB.prepare("UPDATE stores SET last_login=CURRENT_TIMESTAMP WHERE id=?").bind(s.id).run();
+  await env.DB.prepare("UPDATE stores SET last_login=CURRENT_TIMESTAMP WHERE id=? AND (last_login IS NULL OR last_login < datetime('now','-1 hour'))").bind(s.id).run();
   const token = await signSession(env, { role: "store", sid: s.id, pv: s.pw_version });
   return json({ role: "store", store: { id: s.id, name: s.name } }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
 }
@@ -164,8 +164,9 @@ async function evaluationDetail(env, session, id) {
   ).bind(id).first();
   if (!ev || (session.role === "store" && ev.store_id !== session.store.id)) throw new HttpError(404, "Evaluation not found");
 
-  const answers = new Map((await env.DB.prepare("SELECT item_id,trained,performed FROM answers WHERE evaluation_id=?").bind(id).all()).results.map((a) => [a.item_id, a]));
-  const skips = new Set((await env.DB.prepare("SELECT section_id FROM eval_skips WHERE evaluation_id=?").bind(id).all()).results.map((r) => r.section_id));
+  const stored = JSON.parse(ev.answers_json || "{}");
+  const answers = new Map(Object.entries(stored).map(([k, v]) => [+k, { trained: v[0], performed: v[1] }]));
+  const skips = new Set(JSON.parse(ev.skips_json || "[]"));
   const submitted = ev.status === "submitted";
   const secs = (await env.DB.prepare("SELECT id,title,active FROM sections WHERE position_id=? ORDER BY sort,id").bind(ev.position_id).all()).results;
   const items = (await env.DB.prepare(
@@ -188,14 +189,14 @@ async function evaluationDetail(env, session, id) {
       max: skipped ? null : qs.length,
     });
   }
-  const { store_id, ...rest } = ev;
+  const { store_id, answers_json, skips_json, ...rest } = ev;
   return { ...rest, sections };
 }
 
 async function submitEvaluation(env, session, id) {
   const ev = await evaluationDetail(env, session, id);
   if (ev.status === "submitted") throw bad("Already submitted");
-  const incomplete = [];
+  const incomplete = [], perSection = [];
   let score = 0, max = 0, trained = 0;
   for (const s of ev.sections) {
     if (s.skipped) continue;
@@ -203,36 +204,40 @@ async function submitEvaluation(env, session, id) {
     const open = qs.filter((q) => q.performed === null || q.trained === null).length;
     if (open) incomplete.push(`${s.title} (${open} unanswered)`);
     for (const q of qs) { max++; score += q.performed === 1 ? 1 : 0; trained += q.trained === 1 ? 1 : 0; }
+    perSection.push([s.id, qs.filter((q) => q.performed === 1).length, qs.length]);
   }
   if (max === 0) throw bad("Every section is marked not applicable — nothing to score.");
   if (incomplete.length) throw new HttpError(400, `Please answer every question first: ${incomplete.slice(0, 5).join("; ")}${incomplete.length > 5 ? "…" : ""}`);
-  await env.DB.prepare("UPDATE evaluations SET status='submitted',score=?,max_score=?,trained_count=?,submitted_at=CURRENT_TIMESTAMP WHERE id=?").bind(score, max, trained, id).run();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE evaluations SET status='submitted',score=?,max_score=?,trained_count=?,submitted_at=CURRENT_TIMESTAMP WHERE id=?").bind(score, max, trained, id),
+    ...perSection.map(([sid, sc, mx]) => env.DB.prepare("INSERT OR REPLACE INTO eval_sections (evaluation_id,section_id,score,max) VALUES (?,?,?,?)").bind(id, sid, sc, mx)),
+  ]);
   return evaluationDetail(env, session, id);
 }
 
 async function saveAnswers(env, session, id, body) {
-  const ev = await env.DB.prepare("SELECT store_id,status,position_id FROM evaluations WHERE id=?").bind(id).first();
+  const ev = await env.DB.prepare("SELECT store_id,status,position_id,answers_json,skips_json FROM evaluations WHERE id=?").bind(id).first();
   if (!ev || ev.store_id !== session.store.id) throw new HttpError(404, "Evaluation not found");
   if (ev.status !== "draft") throw bad("This evaluation is already submitted");
   const valid = new Set((await env.DB.prepare(
     "SELECT i.id FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? AND i.kind='question' AND i.active=1 AND s.active=1"
   ).bind(ev.position_id).all()).results.map((r) => r.id));
   const tri = (v) => (v === 1 || v === 0 ? v : null);
-  const stmts = [];
+  const answers = JSON.parse(ev.answers_json || "{}");
+  let n = 0;
   for (const a of (body.answers || []).slice(0, 500)) {
     if (!valid.has(a.item_id)) continue;
-    stmts.push(env.DB.prepare(
-      `INSERT INTO answers (evaluation_id,item_id,trained,performed) VALUES (?,?,?,?)
-       ON CONFLICT(evaluation_id,item_id) DO UPDATE SET trained=excluded.trained, performed=excluded.performed`
-    ).bind(id, a.item_id, tri(a.trained), tri(a.performed)));
+    answers[a.item_id] = [tri(a.trained), tri(a.performed)];
+    n++;
   }
+  let skips = ev.skips_json;
   if (Array.isArray(body.skip)) {
     const secIds = new Set((await env.DB.prepare("SELECT id FROM sections WHERE position_id=?").bind(ev.position_id).all()).results.map((r) => r.id));
-    stmts.push(env.DB.prepare("DELETE FROM eval_skips WHERE evaluation_id=?").bind(id));
-    for (const sid of body.skip) if (secIds.has(sid)) stmts.push(env.DB.prepare("INSERT INTO eval_skips (evaluation_id,section_id) VALUES (?,?)").bind(id, sid));
+    skips = JSON.stringify(body.skip.filter((x) => secIds.has(x)));
   }
-  for (let i = 0; i < stmts.length; i += 90) await env.DB.batch(stmts.slice(i, i + 90));
-  return { saved: stmts.length };
+  // one row write per save, however many answers changed
+  await env.DB.prepare("UPDATE evaluations SET answers_json=?, skips_json=? WHERE id=?").bind(JSON.stringify(answers), skips, id).run();
+  return { saved: n };
 }
 
 // ----- admin: stores -----
@@ -298,10 +303,9 @@ async function summary(env) {
   ).all()).results;
   // weakest sections across all submitted evaluations
   const weakest = (await env.DB.prepare(
-    `SELECT p.name position, s.title section, COUNT(*) answered, ROUND(100.0*SUM(a.performed)/COUNT(*),1) pct
-     FROM answers a JOIN evaluations e ON e.id=a.evaluation_id AND e.status='submitted'
-     JOIN items i ON i.id=a.item_id JOIN sections s ON s.id=i.section_id JOIN positions p ON p.id=s.position_id
-     GROUP BY s.id HAVING COUNT(*)>=5 ORDER BY pct ASC LIMIT 8`
+    `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
+     FROM eval_sections es JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
+     GROUP BY s.id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8`
   ).all()).results;
   return { totals, byPosition, byStore, weakest };
 }
@@ -353,8 +357,7 @@ async function handle(request, env) {
       if (!ev || (!isAdmin && ev.store_id !== session.store.id)) throw new HttpError(404, "Not found");
       if (!isAdmin && ev.status !== "draft") throw new HttpError(403, "Only drafts can be deleted. Ask an admin to remove a submitted evaluation.");
       await env.DB.batch([
-        env.DB.prepare("DELETE FROM answers WHERE evaluation_id=?").bind(id),
-        env.DB.prepare("DELETE FROM eval_skips WHERE evaluation_id=?").bind(id),
+        env.DB.prepare("DELETE FROM eval_sections WHERE evaluation_id=?").bind(id),
         env.DB.prepare("DELETE FROM evaluations WHERE id=?").bind(id),
       ]);
       return json({ ok: true });

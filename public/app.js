@@ -182,7 +182,7 @@ async function evalForm(ev) {
     saving = false;
     if (dirty.size || skipDirty) schedule();
   }
-  const schedule = () => { state.textContent = "Saving…"; clearTimeout(timer); timer = setTimeout(flush, 700); };
+  const schedule = () => { state.textContent = "Saving…"; clearTimeout(timer); timer = setTimeout(flush, 2000); };
 
   const overall = h("div", { class: "bar" }, h("i", { style: "width:0" }));
   const overallTxt = h("b", {}, "");
