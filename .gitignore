@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+.dev.vars
+*.log
+credentials-*.csv
+credentials-admin.txt

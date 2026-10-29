@@ -1,0 +1,1938 @@
+[
+ {
+  "name": "Cleaner",
+  "sections": [
+   {
+    "title": "DINE -IN-AREA",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Wipe down tables and chairs with disinfectant"
+     },
+     {
+      "kind": "question",
+      "text": "2.Sanitize menus or replace disposables"
+     },
+     {
+      "kind": "question",
+      "text": "3.Clean and refill condiment holders"
+     },
+     {
+      "kind": "question",
+      "text": "4.Sweep and mop floors"
+     },
+     {
+      "kind": "question",
+      "text": "5.Clean glass doors and interior windows"
+     },
+     {
+      "kind": "question",
+      "text": "6.Dust ledges, light fixtures, wall decor"
+     },
+     {
+      "kind": "question",
+      "text": "7.Empty bins and replace liners"
+     },
+     {
+      "kind": "question",
+      "text": "8.Sanitize high touch points"
+     },
+     {
+      "kind": "question",
+      "text": "9.Restock napkins, cutlery, takeaway items"
+     }
+    ]
+   },
+   {
+    "title": "BAR AREA",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Wipe and disinfect bar top and stools"
+     },
+     {
+      "kind": "question",
+      "text": "2.Clean and sanitize glassware and bar tools"
+     },
+     {
+      "kind": "question",
+      "text": "3.Clean drip trays and bar mats"
+     },
+     {
+      "kind": "question",
+      "text": "4.Chiller and Deep Freezer"
+     },
+     {
+      "kind": "question",
+      "text": "5.Disinfect POS terminals, taps, espresso machine handles"
+     },
+     {
+      "kind": "question",
+      "text": "6.Sweep and mop floors behind the bar"
+     },
+     {
+      "kind": "question",
+      "text": "7.Restock garnishes, napkins, stirrers, straws"
+     },
+     {
+      "kind": "question",
+      "text": "8.Empty trash and recycling bins, replace liners"
+     },
+     {
+      "kind": "question",
+      "text": "9.Clean sinks, ice wells, and shelves"
+     }
+    ]
+   },
+   {
+    "title": "RESTROOMS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Clean and sanitize toilets, urinals, and sinks"
+     },
+     {
+      "kind": "question",
+      "text": "2.Refill toilet paper, hand soap, and paper towels"
+     },
+     {
+      "kind": "question",
+      "text": "3.Clean mirrors and counters"
+     },
+     {
+      "kind": "question",
+      "text": "4.Mop floors with disinfectant"
+     },
+     {
+      "kind": "question",
+      "text": "5.Empty sanitary and general waste bins"
+     },
+     {
+      "kind": "question",
+      "text": "6.Sanitize door handles, light switches, and dispensers"
+     },
+     {
+      "kind": "question",
+      "text": "7.Check for plumbing issues or foul odors"
+     }
+    ]
+   },
+   {
+    "title": "BACK AREA",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Wipe and sanitize all prep surfaces and counters"
+     },
+     {
+      "kind": "question",
+      "text": "2.Wash all utensils, boards, and small equipment"
+     },
+     {
+      "kind": "question",
+      "text": "3.Sweep and mop kitchen floors"
+     },
+     {
+      "kind": "question",
+      "text": "4.Clean coffee machines and blenders"
+     },
+     {
+      "kind": "question",
+      "text": "5.Wipe down fridge and freezer doors"
+     },
+     {
+      "kind": "question",
+      "text": "6.Take out trash and replace bin liners"
+     },
+     {
+      "kind": "question",
+      "text": "7.Check and organize stock areas briefly"
+     },
+     {
+      "kind": "question",
+      "text": "8.Outside Menu Screen"
+     },
+     {
+      "kind": "question",
+      "text": "9.Sanitize handles (fridge, cabinet, door)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Cashier",
+  "sections": [
+   {
+    "title": "TAKING ORDER STEPS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS WELCOMING THE CUSTOMER WITH THE APPROVED PHRASE (حياك الله في هاف مليون كيف اقدر اخدمك)"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS TAKING THE ORDER CORRECTLY AND REPEATING THE ORDER WHILE TAKING IT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS DOING SUGGESTIVE SELLING AND UPSELLING AND SUGGESTING OUR NEW PRODUCT."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS REPEATING THE ORDER TO THE CUSTOMER AND ANNOUNCING THE TOTAL AMOUNT AND PROCCEDING WITH PAYMENT."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE HAND OVER THE INVOICE TO THE CUSTOMER AND THANK THEM WITH OUR APPROVED PHRASE (نورت هاف مليون نشوفك على خير)"
+     }
+    ]
+   },
+   {
+    "title": "S.W.E.E.T. CULTURE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS SMILING TO THE CUSTOMER AND CREATING A POSITVE ATMOSPHARE."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS WELCOMING EVERY CUSTOMER AND TREATING THEM WITH RECPECT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS INTRODUCING THE PRODUCTS TO THE CUSTOMER AND TAKING THE TIME TO EXPLAIN THE PRODUCTS TO THEM."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS CREATING A FRIENDLY VIBE AND MAKING RECPECTFUL CONVERSATIONS TO BREAK THE ICE."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS ALWAYS THANKING THE CUSTOMERS AND INVITING THEM TO VISIT AGAIN."
+     }
+    ]
+   },
+   {
+    "title": "DISPATCHING",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS VERIFYING THE CUSTOMER INVOICE."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS ARRENGAING THE CUSTOMER ORDER BEFORE DISPATCHING IT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE DIRECTING THE CUSTOMER TO THE CONDIMENTS."
+     }
+    ]
+   },
+   {
+    "title": "PRODUCT AWARENESS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE ABOUT ALL MENU ITEMS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH ALL THE PRODUCT ALLERGIES"
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE KNOWS THE PRICES OF HALF MILLION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE PRICES OF ANY ADDITIONALS ON PRODUCTS."
+     }
+    ]
+   },
+   {
+    "title": "HALF MILLION BRANDED MUGS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.TEAM KNOWS ALL RELATED INFORMATION ON HALF MILLION MUGS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS AWARE HOW TO CHECK ANY HALF MILLION MUG."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE POLICY OF THE FREE DRINK INSIDE THE MUG AND IT CRITIRAS."
+     }
+    ]
+   },
+   {
+    "title": "TEAM WORK AND COMMUNICATION SKILLS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS MAKING CLEAR COMMUNCATION AMOUNG HIS STORE TEAM TO ENSURE A SMOOTH OPERATION."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS WORKING WITH HIS TEAM AND ALWAYS READY TO HELP ALWAYS."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS DOING HIS SECONDARY TASK AND HELPING HIS TEAM IN PREPEARING PRODUCTS (SANDWICHES, SWEET, COLD DRINKS WITHOUT ESSPRESO)."
+     }
+    ]
+   },
+   {
+    "title": "POLICIES",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS APPLYING HALF MILLION DRIP COFFEE REFILL POLICY"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH THE STAFF USAGE DISCOUNT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE VACATION AND SICKLEAVES POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS FAMILIAR OF THE BREAK POLICY."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS FAMILIAR WITH THE DEPLOYMENT POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "6.THE EMPLOYEE IS WORKING THEIR FULL WORKING HOURS AND FOLLOWING THE SCEDUALE."
+     },
+     {
+      "kind": "question",
+      "text": "7.THE EMPLOYEE IS FAMILIAR WITH THE COMPANY DRESS CODE POLCY (INCLUDING PPE)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Beverages",
+  "sections": [
+   {
+    "title": "Hot Drip Coffee",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Start by placing a filter paper on the drip funnel and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2. Weigh 70G into 1 liter of Drip Coffee beans into tared stainless cup with the as desired by the business."
+     },
+     {
+      "kind": "question",
+      "text": "3. Place the weighed Drip Coffee Beans into the designated grinder for Drip Coffee Beans only."
+     },
+     {
+      "kind": "question",
+      "text": "4. Position the stainless cup on the spout of the grinder. Make sure the grinder is set to Drip coffee settings."
+     },
+     {
+      "kind": "question",
+      "text": "5. Start grinding the drip coffee beans and when grinding finishes, remove the stainless cup. Never pre-grind coffee."
+     },
+     {
+      "kind": "note",
+      "text": "It is always best to use freshly ground beans for brewed coffee."
+     },
+     {
+      "kind": "heading",
+      "text": "Brewing"
+     },
+     {
+      "kind": "question",
+      "text": "1. Position the drip funnel with coffee grind below the spray head."
+     },
+     {
+      "kind": "question",
+      "text": "2. Press the desired button for brewing according to grinded amount of beans."
+     },
+     {
+      "kind": "note",
+      "text": "Note:Brewing timing will be the same for all, 5 minutes and 30 seconds"
+     },
+     {
+      "kind": "heading",
+      "text": "Serving"
+     },
+     {
+      "kind": "question",
+      "text": "1. When brewing finishes make sure to have it labeled with a holding time 30 minutes after brewing."
+     },
+     {
+      "kind": "question",
+      "text": "2. Get desired serving cup."
+     },
+     {
+      "kind": "question",
+      "text": "3. Dispense brewed coffee 340g for 12oz and 450g for 16oz into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve coffee with smile and advise customers to condiments."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Hot Drip Coffee with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Drip Coffee",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Start by placing a filter paper on the drip funnel and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2. Weigh 280G into 3 liter of Drip Coffee beans into tared stainless cup with the as desired by the business."
+     },
+     {
+      "kind": "question",
+      "text": "3. Place the weighed Drip Coffee Beans into the designated grinder for Drip Coffee Beans only."
+     },
+     {
+      "kind": "question",
+      "text": "4. Position the stainless cup on the spout of the grinder. Make sure the grinder is set to Drip coffee settings."
+     },
+     {
+      "kind": "question",
+      "text": "5.Start grinding the drip coffee beans and when grinding finishes, remove the stainless cup. Never pre-grind coffee."
+     },
+     {
+      "kind": "note",
+      "text": "It is always best to use freshly ground beans for brewed coffee."
+     },
+     {
+      "kind": "heading",
+      "text": "Brewing"
+     },
+     {
+      "kind": "question",
+      "text": "1. Position the drip funnel with coffee grind below the spray head."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put 900g of cube ice inside the thermal tank."
+     },
+     {
+      "kind": "question",
+      "text": "3. Press the desired button for brewing according to grinded amount of beans."
+     },
+     {
+      "kind": "note",
+      "text": "Note:Brewing timing will be the same for all. 5 minutes and 30 seconds"
+     },
+     {
+      "kind": "heading",
+      "text": "Serving"
+     },
+     {
+      "kind": "question",
+      "text": "1. When brewing finishes make sure to have it labeled with a holding time 1 hour after brewing."
+     },
+     {
+      "kind": "question",
+      "text": "2. Get desired serving cup, 12oz or 16oz."
+     },
+     {
+      "kind": "question",
+      "text": "3. Dispense brewed coffee 12oz-220g &9pcs ice/16oz-250g & 11pcs ice into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Drip Coffee with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Espresso",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Place the portafilter with the coffee grind into the automatic tamper(PUQ PRESS)After tamping, wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3. Then fit the group handle containing tamped grind firmly to the grouphead of the espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "4. Place the serving cup under the portafilter and allow the extract to Espresso 34 to 36 Grams into it,Extraction usually takes 20-30 seconds."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Espresso with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Steaming",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Fully submerge yourpitcher right to the bottom of the spout with cold milk.Fully submerge your thermometer into the milk."
+     },
+     {
+      "kind": "question",
+      "text": "2. Turn on your machine's steam function and purge the steam wand.When you're ready to start."
+     },
+     {
+      "kind": "question",
+      "text": "3. Turn on your espresso machine and allow it to heat to its normal brewing temperature. Place the steam wand just below the surface of the milk."
+     },
+     {
+      "kind": "question",
+      "text": "4. Open the steam valve to full blast."
+     },
+     {
+      "kind": "question",
+      "text": "5. Expand the milk 30°C-40°C"
+     },
+     {
+      "kind": "question",
+      "text": "6. Lower steam wand and heat up to 60°C"
+     },
+     {
+      "kind": "question",
+      "text": "7. Clean it up the steaming wand when finished."
+     }
+    ]
+   },
+   {
+    "title": "Cappuccino",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS). After tamping,wipe any excess ground coffee (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Insert and gently lock the portafilter into espresso machine group head.Place the desired cup size under the portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "3.Pour the for 9oz 160g & for 12oz 200g amount of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "4.While extracting the espresso for 9oz 34g-36g & for 12oz 49g-51g, steam the milk up to 60°C."
+     },
+     {
+      "kind": "question",
+      "text": "5.Pour the steamed milk into the cup with espresso on it."
+     },
+     {
+      "kind": "question",
+      "text": "6.Finish with an art. (Total weight: 9oz-194g-196g/12oz-249g-251g)"
+     },
+     {
+      "kind": "question",
+      "text": "7. Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Cappuccino with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Latte",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS). After tamping,wipe any excess ground coffee (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Insert and gently lock the portafilter into espresso machine group head.Place the desired cup size under the portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "3.Pour the fpr 9oz 200g & for 12oz 270g amount of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "4.While extracting the espresso for 9oz 34g-36g & 12oz 49g-51g, steam the milk up to 60°C."
+     },
+     {
+      "kind": "question",
+      "text": "5.Pour the steamed milk into the cup with espresso on it."
+     },
+     {
+      "kind": "question",
+      "text": "6.Finish with an art. (Total Weight: 9oz-234g-236g/12 oz-319g-321g)"
+     },
+     {
+      "kind": "question",
+      "text": "7. Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Latte with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Hot Signature",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing HM Cup to a weighing scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Pump the correct amount of sweet sauce into the Cup for 9oz 18g & for 12oz 30 g, set aside."
+     },
+     {
+      "kind": "question",
+      "text": "3.Make sure to not over portion the sweet sauce."
+     },
+     {
+      "kind": "question",
+      "text": "4.Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)"
+     },
+     {
+      "kind": "question",
+      "text": "5.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS).After tamping,wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "6.Insert and gently lock the portafilter into the espresso machine group head.Place the measurement glass under portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "7.After espresso extraction,by using milk frother,mixed the sweet sauce and espresso mixture for about 3 seconds.Then set aside."
+     },
+     {
+      "kind": "question",
+      "text": "8.Pour the for 9oz 180g &for 12oz 250g amount of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "9.While extracting the espresso for 9oz 34g-36g & for 12oz 49g-51g, steam the milk up to 60°C."
+     },
+     {
+      "kind": "question",
+      "text": "10.When the milk temperature is achieved,turn the steaming knob off,set aside the milk pitcher and quick clean the steaming wand."
+     },
+     {
+      "kind": "question",
+      "text": "11.Start pouring the steamed milk into the cup of espresso and sweet sauce mixture on it."
+     },
+     {
+      "kind": "question",
+      "text": "12.Finish with art. (Total Weight: 9oz- 232g-235g/12oz-329g-332g)"
+     },
+     {
+      "kind": "question",
+      "text": "13.Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Signature with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Cortado",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS).After tamping,wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3.Insert and gently lock the portafilter into the espresso machine group head.Place the 4oz cup size under portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "4.Pour the 55g amount of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "5.While extracting the espresso 34g-36g, steam the milk up to 60°C"
+     },
+     {
+      "kind": "question",
+      "text": "6.Pour the steamed milk into the cup with espresso on it."
+     },
+     {
+      "kind": "question",
+      "text": "7.Finish with art. (Total Weight: 4oz-89g-91g)"
+     },
+     {
+      "kind": "question",
+      "text": "8.Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Cortado with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Flat White",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS). After tamping,wipe any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3.Insert and gently lock the portafilter into espresso machine group head.Place the desired cup size under the portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "4.Pour the 125g of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "5.While extracting the espresso 34 g-36g, steam the milk up to 60°C."
+     },
+     {
+      "kind": "question",
+      "text": "6.Pour the steamed milk into the cup with espresso on it."
+     },
+     {
+      "kind": "question",
+      "text": "7.Finish with an art. (Total Weight: 159g-161g)"
+     },
+     {
+      "kind": "question",
+      "text": "8. Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Flat White with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Piccolo",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS).After tamping,wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3.Insert and gently lock the portafilter into the espresso machine group head.Place the 4oz cup size under portafilter to start extraction."
+     },
+     {
+      "kind": "question",
+      "text": "4.Pour the 72g amount of fresh milk into the pitcher."
+     },
+     {
+      "kind": "question",
+      "text": "5.While extracting the espresso take only single shot of dose 1 17g and steam the milk up to 60°C"
+     },
+     {
+      "kind": "question",
+      "text": "6.Pour the steamed milk into the cup with espresso on it."
+     },
+     {
+      "kind": "question",
+      "text": "7.Finish with art. (Total Weight: 4oz- 89g)"
+     },
+     {
+      "kind": "question",
+      "text": "8.Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Piccolo with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Americano",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Place the portafilter with coffee grind into the automatic tamper (PUQ PRESS).After tamping,wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3.Insert and gently lock the portafilter into the espresso machine group head."
+     },
+     {
+      "kind": "question",
+      "text": "4.Using the hot water from our espresso machine,pour hot water for 9oz 180g & for 12oz 270g directly into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "5.Start extracting the espresso directly on the cup with hot water, 9oz 34g-36g & for 12oz 49g-51g."
+     },
+     {
+      "kind": "question",
+      "text": "6.Serve coffee with smile and advise customer to condiments bar. (Total Weight: 9oz-214g-216g/12oz-319g-321g)"
+     },
+     {
+      "kind": "note",
+      "text": "Serve Americano with smile and advise customers to condiments bar or Serve with 1 stirrer, 1 Tissue and 2 sugar"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Hot Chocolate",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Get the appropriate steaming pitcher size based on the order."
+     },
+     {
+      "kind": "question",
+      "text": "2. Take the hot chocolate mix gallon and shake well before using."
+     },
+     {
+      "kind": "question",
+      "text": "3. Pour hot chocolate mix for 9oz 200g & for 12oz 300g based on the order."
+     },
+     {
+      "kind": "question",
+      "text": "4. Steam the chocolate mixture up to 60°C."
+     },
+     {
+      "kind": "question",
+      "text": "5. Pour the steamed mixture into the cup. (Total Weight after steaming: 9oz-230g/12oz-340g)"
+     },
+     {
+      "kind": "question",
+      "text": "6. Add topping crushed chocolate on the top of milk and chocolate mixture, 9oz-3g/ 12 oz-5g"
+     },
+     {
+      "kind": "question",
+      "text": "7. Serve with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Hot Chocolate with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Signature Base Mix",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing an empty and clean blender jug to scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Pump 180g of sweet sauce into the tared blender jug."
+     },
+     {
+      "kind": "question",
+      "text": "3.Make sure to not over portion the sweet sauce."
+     },
+     {
+      "kind": "question",
+      "text": "4.Directly from milk jug add 1,080g fresh milk into the sweet sauce inside the blender jug."
+     },
+     {
+      "kind": "question",
+      "text": "5.Secure the filled blender jug into the blender."
+     },
+     {
+      "kind": "question",
+      "text": "6.Press button 1 to start blending the mixture and close the lid cover of the blender.Blend for 18 seconds."
+     },
+     {
+      "kind": "question",
+      "text": "7.After the blending time finishes,transfer the mixture into dispenser until it is full."
+     },
+     {
+      "kind": "question",
+      "text": "8.Close the lid of the dispenser and turn on the spray of the dispenser to keep the mixture consistency."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 8 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Iced Matcha Base Mix",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing an empty and clean blender jug to scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Add 150g of Matcha Powder into the tared blender jug."
+     },
+     {
+      "kind": "question",
+      "text": "3.Make sure to not over portion the sweet sauce."
+     },
+     {
+      "kind": "question",
+      "text": "4.Directly from milk jug add 1,300g fresh milk into the Matcha Powder inside the blender jug."
+     },
+     {
+      "kind": "question",
+      "text": "5.Secure the filled blender jug into the blender."
+     },
+     {
+      "kind": "question",
+      "text": "6.Press button 1 to start blending the mixture and close the lid cover of the blender. Blend 3 times for 54 seconds."
+     },
+     {
+      "kind": "question",
+      "text": "7.After the blending time finishes,transfer the mixture into dispenser until it is full."
+     },
+     {
+      "kind": "question",
+      "text": "8.Close the lid of the dispenser and turn on the spray of the dispenser to keep the mixture consistency."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 8 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Iced Signature",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Fill the plastic cup with signature base until reach above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract espresso from our espresso machine as per the standards 12oz 34g-36g & 16 oz 49g-51g."
+     },
+     {
+      "kind": "question",
+      "text": "4.Add the extracted espresso on the prepared ice signature cup"
+     },
+     {
+      "kind": "question",
+      "text": "5.Be careful not to over fill cup until the rim 12oz 200g and 16oz 310g of the cup.Cover with the appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "6.Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Signature with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Latte",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Fill the plastic cup with fresh milk until reached above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract espresso from our espresso machine as per the standards 12oz 34g-36g & 16 oz 49g-51g."
+     },
+     {
+      "kind": "question",
+      "text": "4.Add the extracted espresso on the prepared Iced Latte Cup."
+     },
+     {
+      "kind": "question",
+      "text": "5.Be careful not to over fill cup until the rim 12oz 200g and 16oz 310g of the cup.Cover with the appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "6.Serve with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Latte with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Americano",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Fill the plastic cup with chilled water until reached above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract espresso from our espresso machine as per the standards 12oz 34g-36g & 16 oz 49g-51g."
+     },
+     {
+      "kind": "question",
+      "text": "4.Add the extracted espresso on the prepared Iced Cup with chilled water."
+     },
+     {
+      "kind": "question",
+      "text": "5.Be careful not to over fill cup until the rim 12oz 200g and 16oz 310g of the cup.Cover with the appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "6.Serve with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Americano with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Cereal Latte",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2.Fill the plastic cup with cereal base until reach above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract espresso from our espresso machine as per the standards."
+     },
+     {
+      "kind": "question",
+      "text": "4.Add the extracted espresso on the prepared iced cereal cup, 12oz 1 shot of dose 1 17g & 16oz 1 shot of dose 2 25g."
+     },
+     {
+      "kind": "question",
+      "text": "5.Be careful not to over fill cup until the rim 12oz 220g and 16oz 335g of the cup.Cover with the appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "6.Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Cereal Latte with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Chocolate",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put the Iced Chocolate mixture (250g for 12oz/340g for 16oz) until reached above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3. Be careful not to overfill cup until the rim of the cup. Cover with the appropriate lid and advise customer to condiment bar."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Chocolate with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Passion Fruit",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean Paper cup (9oz-3pcs 60g/12oz-5pcs 100g)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put the Passion fruit mixture (180g for 9oz/230g for 12oz) until reached top rim of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3. Be careful not to overfill cup until the rim of the cup. Cover with the appropriate lid and advise customer to condiment bar."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Passion Fruit Tea with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Hibiscus",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean paper cup (60g for 9oz/100g for 12oz)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put the Hibiscus mixture (180g for 9oz/230g for 12oz) until reached above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3. Be careful not to overfill cup until the rim of the cup. Cover with the appropriate lid and advise customer to condiment bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Hibiscus with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Matcha Latte",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing ice cubes on a clean plastic cup (12oz-5pcs 100g/16oz-8pcs 160g)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put the matcha mixture (250g for 12oz/340g for 16oz) until reached above waterline mark of the cup."
+     },
+     {
+      "kind": "question",
+      "text": "3. Be careful not to overfill cup until the rim of the cup. Cover with the appropriate lid and advise customer to condiment bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Matcha latte with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Vanilla Cookies Ice Cream",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Position the cup on the ice cream machine and dispense the Vanilla Ice cream making a pyramid peak 130g."
+     },
+     {
+      "kind": "question",
+      "text": "2. Put 7g of Salted caramel sauce on top and then add 12g of cookies cubes after the sauce and topping with 3g of shaved pecun nuts."
+     },
+     {
+      "kind": "question",
+      "text": "3.Cover with the appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Golden Ice Cream with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Spoon"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Ice Cream Chocolate",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Position the cup on the ice cream machine and dispense the Chocolate ice cream making a pyramid peak 130g"
+     },
+     {
+      "kind": "question",
+      "text": "2. Put 10g of Pretzel sauce on top and then 1g of Cocoa Nibs after the sauce."
+     },
+     {
+      "kind": "question",
+      "text": "3. Put 1pc of Pretzel Biscuit on top as shown in the picture."
+     },
+     {
+      "kind": "question",
+      "text": "4. Cover with appropriate lid."
+     },
+     {
+      "kind": "question",
+      "text": "5. Serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Ice Cream Chocolate with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Spoon"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Affogato",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by scooping 2 scoops of vanilla ice cream 100g on a clean 9oz paper cup"
+     },
+     {
+      "kind": "question",
+      "text": "2.Position the second scoop of vanilla ice cream on the top of first scoop."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract double shot espresso(34g-36g) from our espresso machine as per the standards."
+     },
+     {
+      "kind": "question",
+      "text": "4.Carefully add the extracted double shot espresso(34g-36g)on the top of scooped vanilla ice cream."
+     },
+     {
+      "kind": "question",
+      "text": "5.Cover with black hot lid and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Affogato with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Spoon"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Coffee Crunch",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by scooping 2 scoops of vanilla ice cream (100g) on a clean 9oz plastic cup"
+     },
+     {
+      "kind": "question",
+      "text": "2.Position the second scoop of vanilla ice cream on the top of first scoop."
+     },
+     {
+      "kind": "question",
+      "text": "3.Extract single shot espresso(17g) from our espresso machine by placing 2 shot shot glass on the spout of portafilter."
+     },
+     {
+      "kind": "question",
+      "text": "4.Carefully add the extracted single shot espresso(1 shot dose 1 17g)on the top of scooped vanilla ice cream"
+     },
+     {
+      "kind": "question",
+      "text": "5.Drizzle 30g of nutella sauce on the top of scooped vanilla ice cream"
+     },
+     {
+      "kind": "question",
+      "text": "6.Drizzle 30g of lotus sauce on the top of scooped vanilla ice cream."
+     },
+     {
+      "kind": "question",
+      "text": "7.Topped with 13g of lotus crumble on the top of scooped vanilla ice cream."
+     },
+     {
+      "kind": "question",
+      "text": "8.Cover with dome lid and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Coffee Crunch with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Spoon"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 1 Minute 30 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Cold Brew Bottling",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing a clean 254g PET bottle on top of a calibrated scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Using a graduated milk pitcher,measure 254g of cold brew from the container and carefully pour into 254g PET bottle."
+     },
+     {
+      "kind": "question",
+      "text": "3.Cover with lid and sealed it tight ensuring that no leakage on the content"
+     },
+     {
+      "kind": "question",
+      "text": "4.Put a label sticker."
+     },
+     {
+      "kind": "question",
+      "text": "5.Put and expiration date 5 days from production date based on the gallon on the bottom of bottle using a tagger.Keep it chilled and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Cold Latte Bottling",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing a clean 250g PET bottle on top of a calibrated scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Directly from the Milk jug,carefully pour 220g fresh milk into PET Bottle."
+     },
+     {
+      "kind": "question",
+      "text": "3.Weigh the bottle content to ensure consistency in every bottled prepared"
+     },
+     {
+      "kind": "question",
+      "text": "4.Extract double shot espresso(34g-36g) from our espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "5.Carefully add the extracted espresso on the prepared bottled signture mix."
+     },
+     {
+      "kind": "question",
+      "text": "6.Weigh the bottle content to ensure consistency in every bottled prepared"
+     },
+     {
+      "kind": "question",
+      "text": "7.Cover with lid and sealed it tight ensuring that no leakage on the content and put a lable sticker."
+     },
+     {
+      "kind": "question",
+      "text": "8.Put an expiration date 2 days from production date on the bottom of bottle using a tagger.Keep it chilled and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Cold Signature Bottling",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing a clean 250G PET bottle on top of a calibrated scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Using a graduated milk pitcher,measure 220g of signature mix from the signature mix dispenser and carefully pour 220g into bottle."
+     },
+     {
+      "kind": "question",
+      "text": "3.Weigh the bottle content to ensure consistency in every bottle prepared"
+     },
+     {
+      "kind": "question",
+      "text": "4.Extract double shot espresso (34g-36g) from our espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "5.Carefully add the extracted espresso on the prepared bottled signature mix."
+     },
+     {
+      "kind": "question",
+      "text": "6.Weigh the bottle content to ensure consistency in every bottle prepared"
+     },
+     {
+      "kind": "question",
+      "text": "7.Cover with lid and sealed it tight ensuring that no leakage on the content and put label sticker."
+     },
+     {
+      "kind": "question",
+      "text": "8.Put an expiration date 2 days from production date on the bottom of bottle using a tagger.Keep it chilled and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Matcha Bottling",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing a clean 250G PET bottle on top of a calibrated scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Using a graduated milk pitcher,measure 250g of matcha mixture from the container and carefully pour into 250G PET bottle."
+     },
+     {
+      "kind": "question",
+      "text": "3.Cover with lid and sealed it tight ensuring that no leakage on the content"
+     },
+     {
+      "kind": "question",
+      "text": "4.Put a label sticker."
+     },
+     {
+      "kind": "question",
+      "text": "5.Put and expiration date 2 days from production date on the bottom of bottle using a tagger.Keep it chilled and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minutes"
+     }
+    ]
+   },
+   {
+    "title": "Cereal Latte Bottling",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Start by placing a clean 250G PET bottle on top of a calibrated scale and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2.Using a graduated milk pitcher, measure 220g of cereal mix from the cereal mix dispenser and carefully pour 220G into bottle."
+     },
+     {
+      "kind": "question",
+      "text": "3.Weigh the bottle content to ensure consistency in every bottle prepared"
+     },
+     {
+      "kind": "question",
+      "text": "4.Extract double shot espresso but pour only 1 shot of dose 1 17g from our espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "5.Carefully add the extracted espresso on the prepared bottled cereal mix."
+     },
+     {
+      "kind": "question",
+      "text": "6.Weigh the bottle content to ensure consistency in every bottle prepared"
+     },
+     {
+      "kind": "question",
+      "text": "7.Cover with lid and sealed it tight ensuring that no leakage on the content and put label sticker."
+     },
+     {
+      "kind": "question",
+      "text": "8.Put an expiration date 2 days from production date on the bottom of bottle using a tagger.Keep it chilled and serve with a smile."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 2 Minutes"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Barista",
+  "sections": [
+   {
+    "title": "PRODUCT KNOWLEDGE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE OF THE COLD SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS AWARE OF THE HOT SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS AWARE OF THE DRIP COFFEE SECTION PRODUCTS (HOT AND COLD)."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE ICECREAM SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS AWARE OF THE MIXES PREPERATION"
+     },
+     {
+      "kind": "question",
+      "text": "6.THE EMPLOYEE IS AWARE OF ALL FOOD ITEMS (SWEET AND SANDWICHES)"
+     }
+    ]
+   },
+   {
+    "title": "LATTE ART",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE LATTE ART AND MAKING LATTE ART ON EVERY HOT DRINK."
+     }
+    ]
+   },
+   {
+    "title": "CALIBRATION",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE CALLIBRATION PROCCEDUR AND APPLING IT."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FELLING THE CALLIBRATION SHEET."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FELLING THE DRIP COFFEE CALLIBRATION SHEET."
+     }
+    ]
+   },
+   {
+    "title": "DISPATCHING",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS VERIFYING THE CUSTOMER INVOICE."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS ARRENGAING THE CUSTOMER ORDER BEFORE DISPATCHING IT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE DIRECTING THE CUSTOMER TO THE CONDIMENTS."
+     }
+    ]
+   },
+   {
+    "title": "PRODUCT AWARENESS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE ABOUT ALL MENU ITEMS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH ALL THE PRODUCT ALLERGIES"
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE KNOWS THE PRICES OF HALF MILLION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE PRICES OF ANY ADDITIONALS ON PRODUCTS."
+     }
+    ]
+   },
+   {
+    "title": "HALF MILLION BRANDED MUGS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.TEAM KNOWS ALL RELATED INFORMATION ON HALF MILLION MUGS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS AWARE HOW TO CHECK ANY HALF MILLION MUG."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE POLICY OF THE FREE DRINK INSIDE THE MUG AND IT CRITIRAS."
+     }
+    ]
+   },
+   {
+    "title": "TEAM WORK AND COMMUNICATION SKILLS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS MAKING CLEAR COMMUNCATION AMOUNG HIS STORE TEAM TO ENSURE A SMOOTH OPERATION."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS WORKING WITH HIS TEAM AND ALWAYS READY TO HELP ALWAYS."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS HELPING HIS TEAM IN PREPEARING PRODUCTS (SANDWICHES, SWEET)."
+     }
+    ]
+   },
+   {
+    "title": "POLICIES",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS APPLYING HALF MILLION DRIP COFFEE REFILL POLICY"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH THE STAFF USAGE DISCOUNT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE VACATION AND SICKLEAVES POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS FAMILIAR OF THE BREAK POLICY."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS FAMILIAR WITH THE DEPLOYMENT POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "6.THE EMPLOYEE IS WORKING THEIR FULL WORKING HOURS AND FOLLOWING THE SCEDUALE."
+     },
+     {
+      "kind": "question",
+      "text": "7.THE EMPLOYEE IS FAMILIAR WITH THE COMPANY DRESS CODE POLCY (INCLUDING PPE)"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "Manager",
+  "sections": [
+   {
+    "title": "BAR AREA CHECK",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.EMPLOYEES HANDS ARE WASHED, SANITIZED, AND WEARING HAND GLOVES BEFORE HANDLING ANY DRINKS."
+     },
+     {
+      "kind": "question",
+      "text": "2.THERMOMETER CALIBRATED SPECS OF THERMOMETER (0-220 C)."
+     },
+     {
+      "kind": "question",
+      "text": "3.COUNTER (HOT & COLD ) SECTIONS ARE DRY, CLEANED, AND IN GOOD SMELL ALWAYS."
+     },
+     {
+      "kind": "question",
+      "text": "4.BLENDERS ARE CLEANED AND IN GOOD CONDITIONS."
+     },
+     {
+      "kind": "question",
+      "text": "5.DISPENSER MACHINES ( CRATHCO ) ARE CLEAN AND RESTOCKED AS NEEDED AND THE TWO BUTTONS ARE WORKING (ON ALWAYS , SPIN BUTTON WORKING ALWAYS )"
+     }
+    ]
+   },
+   {
+    "title": "DOSER/GRINDER AND EMPLOYEES KNOWLEDGE & PRACTICE ON IT",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.BARISTAS KNOW HOW TO CALIBRATE, APPLYING CURRENT CALIBRATION PROCESS, GRINDER ARE CLEANED AND IN GOOD CONDITION."
+     },
+     {
+      "kind": "question",
+      "text": "2.DRIP COFFE MACHINE (HOT & COLD)ARE CLEANED AND THE THERMAL IS CLEANED ALL THE TIME AND IN GOOD CONDITION."
+     },
+     {
+      "kind": "question",
+      "text": "3.FILTERS ARE APPLIED PROPERLY EVERY SINGLE USE ANDCLEANING OF BREW BASKET"
+     },
+     {
+      "kind": "question",
+      "text": "4.MACHINE EVERY DAY USING APPLIED CHEMICAL MATERIALS , DRIP COFFEE BREWER SET UPTO STANDARD TEMP (93°C)."
+     },
+     {
+      "kind": "question",
+      "text": "5.DRIP COFFEE GRINDER IS CLEANED AND SET IN CORRECT GRIND SIZE."
+     },
+     {
+      "kind": "question",
+      "text": "6.DRIP COFFEE IS SERVED FRESH AND COMPLETED FROM THE BREW TANK, BROHIBITED TO FILL FROM TWO DIFFERENT BREW TANKERS."
+     },
+     {
+      "kind": "question",
+      "text": "7.DRIP COFFEE BREWER IS RINSED BEFORE BREWING NEW BATCH BREWED COFFEE, SHELF LIFE IS MONITORED USING TIMER 30MIN. AND 1HR AND TO BE TASTED BEFORE SERVING"
+     }
+    ]
+   },
+   {
+    "title": "ESPRESSO MACHINE HOT AND COLD/NITRO MACHINE/ICE CREAM MACHINE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.BREWING WATER TEMPERATURE (93.5°C & 94°C) W/CLEAN PORTAFILTER & GROUPHEAD."
+     },
+     {
+      "kind": "question",
+      "text": "2.ICE CREAM MACHINE SET UP TO STANDARD VISCOSITY 3.00 (CHOCOLATE) & 3.00 (GOLDEN CHOCOLATE) AND MIX TEMPRATURE 4.00 (CHOCOLATE) & 4.00 (GOLDEN CHOCOLATE)."
+     },
+     {
+      "kind": "question",
+      "text": "3.ESPRESSO SHOT CALIBRATED 34-36 GRAMS DOSE 1 & 49-51 GRAMS DOSE 2 WITH AS PER ESPRESSO SHOT IS EXTRACTED."
+     },
+     {
+      "kind": "question",
+      "text": "4.NITRO MACHINE SET UP TO STANDARD MODE OR SETTING 9 O'CLOCK."
+     },
+     {
+      "kind": "question",
+      "text": "5.NITRO MACHINE IS UP STANDARD AND PEACH ICED TEA AND HIBISCUS IS UP TO STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "6.AUTOMATIC PORTAFILTER CLEANERS ARE ALWAYS CLEANED AND WITHOUT COFFEE BUILD UP."
+     }
+    ]
+   },
+   {
+    "title": "MENU ITEMS PREPRATION & STAFF PRACTICES",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE TEAM PREPARES ALL HOT DRINKS MENU ITEMS, AS PER HM STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE TEAM PREPARES ALL COLD DRINKS MENU ITEMS, AS PER HM STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "3.TEAM MUST HAVE FULL S.O.P KNOWLEDGE AND ITS PREPARED ACCORDIGNLY UP TO HALF MILLION STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "4.TEAM MUST HAVE FULL S.O.P KNOWLEDGE OF \"NEW PRODUCTS\" AND ITS PREPARATION UP TO HALF MILLION STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "5.TEAM ARE PREPARING THE HM PRODUCTS AS PER STANDARD AND RIGHT PACKING INCLUDING BLACK STOPER/SPLASH LID GUARD, ONLY FOR HOT DRINKS FOR HM APP. & AGGREGATORS."
+     }
+    ]
+   },
+   {
+    "title": "HALF MILLION BRANDED MUGS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.TEAM KNOWS ALL RELATED INFORMATION ON HALF MILLION MUGS"
+     },
+     {
+      "kind": "question",
+      "text": "2.CLEANING AND WASHING PROCESS FOR NEWLY MUGS ARE APPLIED AND MAINTAIN SELF DRY, SAME AS REPEATED CUSTOMERS MUGS AS WELL."
+     },
+     {
+      "kind": "question",
+      "text": "3.PREPARATION OF DRINKS IN BOTH HOT AND COLD MUGS ARE UP TO STANDARD."
+     }
+    ]
+   },
+   {
+    "title": "ALLERGEN CHART",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.ALLERGIES CHART IS PRINTED AND SHARED WITH ALL TEAM."
+     }
+    ]
+   },
+   {
+    "title": "CLEANERS KNOWLEDGE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.PERSONAL HYGIENE AND GROOMING ARE UP TO HALF MILLION STANDARD."
+     },
+     {
+      "kind": "question",
+      "text": "2.PROPER HANDLING AND KNOWLEDGE OF DIFFERENT ECOLAB CHEMICALS AND ITS RIGHT USE."
+     },
+     {
+      "kind": "question",
+      "text": "3.PERFORMANCE AND KNOWLEDGE OF A CLEANER IS FULLY UPDATED ALL OVER ITS JOB RESPONSIBILITIES."
+     },
+     {
+      "kind": "question",
+      "text": "4.FOLLOWING AND COMPLETING THE DAILY CLEANER'S CHECKLIST."
+     },
+     {
+      "kind": "question",
+      "text": "5.ALL HM STAFF SHOULD FOLLOW THE \"PPE\" STANDARD"
+     }
+    ]
+   },
+   {
+    "title": "STORE MANPOWER AND REFLECTED POINT ON CUSTOMER SRVICE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.CHECK THE TOTAL MANPOWER OF THE STORE ALONG WITH TOTAL HEAD COUNT ON THE FLOOR."
+     },
+     {
+      "kind": "question",
+      "text": "2.MONITOR THE DRIVE THRU SOS SERVICE TIME."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE STORE APPLIED STAFF’S USAGE, DISCOUNTS & REFUND POLICY ON POS."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE STORE DEPLOYMENT PLAN IS BEING FOLLOWED AND EFFECTIVE."
+     },
+     {
+      "kind": "question",
+      "text": "5.AVAILABILITY OF QUALITY IMPROVEMENT AWARENESS PROCEDURE TO AVOID REPEATED ISSUES."
+     }
+    ]
+   },
+   {
+    "title": "INVENTORY SYSTEM",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.ALL DELIVERIES ARE RECORDED AND RECEIVED IN SYRVE."
+     },
+     {
+      "kind": "question",
+      "text": "2.DAILLY WASTAGE ARE TRACKED ACCURATELY AND RECORDED IN WRITE OFF RECORDS IN SYRVE"
+     },
+     {
+      "kind": "question",
+      "text": "3.STOCK TRANSFER TRANSACTIONS ARE DONE CORRECTLY IN SYRVE."
+     },
+     {
+      "kind": "question",
+      "text": "4.DAILY, WEEKLY, AND MONTHLY INVENTORY ARE RECORDED PROPERLY MANUALLY AND IN SYRVE SYSTEM."
+     }
+    ]
+   }
+  ]
+ }
+]

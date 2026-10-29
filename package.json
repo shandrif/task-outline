@@ -1,0 +1,16 @@
+{
+  "name": "hm-staff-evaluation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "HM staff knowledge evaluation — Cloudflare Workers + D1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "setup:local": "wrangler d1 migrations apply hm-staff-evaluation --local && wrangler d1 execute hm-staff-evaluation --local --file seed/seed.sql",
+    "setup:cloud": "node scripts/setup-cloud.mjs",
+    "deploy": "wrangler deploy",
+    "seed:rebuild": "python3 scripts/extract_questions.py \"$XLSX\" seed/questions.json && python3 scripts/build_seed.py seed/questions.json seed/seed.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.155.0"
+  }
+}
