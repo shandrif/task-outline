@@ -209,10 +209,10 @@ function loginView(initial = "in", prefill = "", notice = "") {
     const err = h("div", { class: "err hidden" });
     const name = h("input", { type: "text", autocomplete: "name", maxlength: 80, required: true });
     const eid = h("input", { type: "text", autocapitalize: "none", maxlength: 30, required: true, placeholder: "e.g. HM1234" });
-    const des = h("input", { type: "text", maxlength: 60, required: true, list: "designations", placeholder: "e.g. Trainer" });
+    const des = h("input", { type: "text", maxlength: 60, required: true, autocomplete: "off", placeholder: "Type your designation" });
     const pw = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
     const pw2 = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
-    const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Create account");
+    const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Sign up");
     return h("form", { class: "stack", onsubmit: async (e) => {
       e.preventDefault(); err.classList.add("hidden");
       if (pw.value !== pw2.value) { err.textContent = "The two passwords don't match"; err.classList.remove("hidden"); return; }
@@ -223,7 +223,6 @@ function loginView(initial = "in", prefill = "", notice = "") {
       } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
     } },
       field("Full name", name), field("Employee ID", eid, "You will sign in with this"), field("Designation", des),
-      h("datalist", { id: "designations" }, ["Trainer", "Senior Trainer", "Area Trainer", "Training Manager"].map((d) => h("option", { value: d }))),
       field("Create a password", pw, "At least 8 characters, with a letter and a number"), field("Confirm password", pw2), err, btn);
   }
 
@@ -234,7 +233,7 @@ function loginView(initial = "in", prefill = "", notice = "") {
       h("h1", {}, "Staff Knowledge Evaluation"), h("div", { class: "tan-bar" }),
       h("div", { class: "tabs", style: "margin:16px 0 14px" },
         h("button", { type: "button", class: "tab" + (tab === "in" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("in")) }, "Sign in"),
-        h("button", { type: "button", class: "tab" + (tab === "up" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("up")) }, "New trainer")),
+        h("button", { type: "button", class: "tab" + (tab === "up" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("up")) }, "Sign up")),
       tab === "in" ? signIn() : signUp(),
     ];
   }
