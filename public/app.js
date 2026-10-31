@@ -246,31 +246,31 @@ function loginView(initial = "in", prefill = "", notice = "") {
 const statusChip = (v) => (v.status === "open" ? h("span", { class: "chip warn" }, "Open") : h("span", { class: "chip good" }, "Completed"));
 
 async function trainerHome() {
-  const visits = await api("/visits");
+  const [visits, my] = await Promise.all([api("/visits"), api("/my/stats")]);
   (window.requestIdleCallback || setTimeout)(() => { cachedGet("/positions").catch(() => {}); cachedGet("/stores", 20000).catch(() => {}); });   // warm the next screens
-  const stores = new Set(visits.map((v) => v.store_id)).size;
-  const evals = visits.reduce((n, v) => n + v.evals, 0);
-  const avg = pct(visits.reduce((n, v) => n + v.sum_score, 0), visits.reduce((n, v) => n + v.sum_max, 0));
+  const stores = my.stores, evals = my.evaluations;
+  const avg = pct(my.sum_score, my.sum_max);
   const open = visits.filter((v) => v.status === "open");
   const g = grid({
     rows: visits.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null })),
     searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.area_manager || ""}`,
     filters: [{ key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, { key: "city", label: "cities" }],
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits yet. Start your first one with “Start store visit”.",
+    toolbar: visits.length >= 60 ? [h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; const all = await api("/visits?all=1"); g.setRows(all.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }))); e.target.remove(); } }, "Show older visits")] : [],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) },
       { key: "city", label: "City" }, { key: "evals", label: "Staff evaluated", num: true }, { key: "avg", label: "Average", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip }],
   });
   return shell(h("div", {},
     pageHead(`Hello, ${session.trainer.name.split(" ")[0]}`, "Visit a store, evaluate the team, and note what needs more training.", h("a", { class: "btn teal", href: "#/visit/new" }, "+ Start store visit")),
     h("div", { class: "grid g4", style: "margin-bottom:16px" },
-      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, visits.length), h("div", { class: "l" }, "Store visits")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, stores), h("div", { class: "l" }, "Different stores visited")),
-      h("div", { class: "kpi tank" }, h("div", { class: "v" }, evals), h("div", { class: "l" }, "Staff evaluations")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score"))),
+      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, my.visits), h("div", { class: "l" }, "Store visits · last 30 days")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, stores), h("div", { class: "l" }, "Different stores · last 30 days")),
+      h("div", { class: "kpi tank" }, h("div", { class: "v" }, evals), h("div", { class: "l" }, "Staff evaluations · last 30 days")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score · last 30 days"))),
     open.length > 0 && h("div", { class: "card" }, h("h2", {}, "Continue where you left off"),
       h("div", { class: "grid g3", style: "margin-top:12px" }, open.map((v) => h("a", { class: "pos-card", href: `#/visit/${v.id}`, style: "text-decoration:none;color:inherit" },
         h("b", {}, v.store_name), h("span", {}, `${v.store_code} · ${v.city || ""} · started ${fmtDateTime(v.started_at)}`))))),
-    h("div", { class: "card" }, h("h2", {}, "My visits"), g.el)), "#/");
+    h("div", { class: "card" }, h("h2", {}, visits.length >= 60 ? "My latest visits" : "My visits"), g.el)), "#/");
 }
 
 // ---------- trainer: start a visit (store picker) ----------
@@ -577,9 +577,15 @@ async function evalRoute(id) {
 }
 
 // ---------- admin: shared period filter ----------
-const range = { preset: "all", from: "", to: "" };
+const range = { preset: "30", from: "", to: "" };   // default: last 30 days (keeps the reports fast and cheap as data grows)
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const rq = () => { const p = new URLSearchParams(); if (range.from) p.set("from", range.from); if (range.to) p.set("to", range.to); const s = p.toString(); return s ? "?" + s : ""; };
+const utc = (d) => d.toISOString().slice(0, 19).replace("T", " ");
+const rq = (extra = "") => {
+  const p = new URLSearchParams(extra);
+  if (range.from) p.set("from", utc(new Date(`${range.from}T00:00:00`)));                                   // local midnight, as UTC
+  if (range.to) { const d = new Date(`${range.to}T00:00:00`); d.setDate(d.getDate() + 1); p.set("to", utc(d)); }   // up to the end of that local day
+  const s = p.toString(); return s ? "?" + s : "";
+};
 function setPreset(p) {
   const t = new Date(), ago = (n) => { const x = new Date(t); x.setDate(x.getDate() - n); return ymd(x); };
   range.preset = p;
@@ -589,6 +595,7 @@ function setPreset(p) {
   else if (p === "30") { range.from = ago(29); range.to = ymd(t); }
   else if (p === "month") { range.from = ymd(new Date(t.getFullYear(), t.getMonth(), 1)); range.to = ymd(t); }
 }
+setPreset("30");
 function rangeBar() {
   const sel = h("select", { class: "flt", "aria-label": "Period", onchange: (e) => { if (e.target.value === "custom") range.preset = "custom"; else setPreset(e.target.value); renderRoute(); } },
     [["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["month", "This month"], ["custom", "Custom range"]].map(([v, l]) => h("option", { value: v, selected: range.preset === v }, l)));
@@ -667,7 +674,7 @@ async function adminHome() {
       h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(t.avg_pct)), h("div", { class: "l" }, `Average score · ${fmtPct(t.trained_pct)} trained`))),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
-      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate across all evaluations."),
+      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate in the latest evaluations of this period."),
         d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Needs a few evaluations.")),
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "By position"), barRows(d.byPosition))),
     h("div", { class: "card" }, h("h2", {}, "Trainers’ notes on areas for improvement"), notesList(d.notes, "No notes in this period.")),
@@ -677,7 +684,7 @@ async function adminHome() {
 
 // ---------- admin: trainers ----------
 async function adminTrainers() {
-  const list = await api("/admin/trainers");
+  const list = await api("/admin/trainers" + rq());
   const rows = list.filter((t) => t.employee_id !== "LEGACY" || t.visits > 0).map((t) => ({ ...t, avg: t.sum_max ? pct(t.sum_score, t.sum_max) : null }));
   const pending = rows.filter((t) => t.status === "pending");
   const setStatus = guarded(async (t, status) => { await api(`/admin/trainers/${t.id}`, { method: "PATCH", body: { status } }); });
@@ -717,7 +724,7 @@ async function adminTrainers() {
         h("button", { class: "icon del", title: "Delete trainer", "aria-label": `Delete ${t.name}`, onclick: () => remove(t) }, "🗑"))) }],
   });
   return shell(h("div", {},
-    pageHead("Trainers", "Trainers create their own account (name, employee ID, designation, password). You approve them here."),
+    pageHead("Trainers", "Trainers create their own account (name, employee ID, designation, password). You approve them here. Visit and score columns follow the period you pick.", rangeBar()),
     pending.length > 0 && h("div", { class: "card" }, h("h2", {}, `Waiting for approval (${pending.length})`),
       h("div", { class: "stack", style: "margin-top:10px" }, pending.map((t) => h("div", { class: "row spread pending-row" },
         h("div", {}, h("b", {}, t.name), h("div", { class: "small muted" }, `${t.employee_id} · ${t.designation} · requested ${fmtDate(t.created_at)}`)),
@@ -727,8 +734,8 @@ async function adminTrainers() {
 
 // ---------- admin: one trainer ----------
 async function adminTrainer(id) {
-  const d = await api(`/admin/trainers/${id}` + rq()), t = d.trainer;
-  const total = (await api("/admin/summary" + rq())).totals.stores;
+  const d = await api(`/admin/trainers/${id}` + rq());
+  const t = d.trainer, total = d.storesTotal;
   const avg = t.sum_max ? pct(t.sum_score, t.sum_max) : null, trained = t.sum_max ? pct(t.sum_trained, t.sum_max) : null;
   const visits = d.visits.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }));
   const g = grid({
@@ -756,20 +763,25 @@ async function adminTrainer(id) {
 // ---------- admin: visits + staff evaluations ----------
 let visitsTab = "visits";
 async function adminVisits(query) {
-  const [visitList, evalList] = await Promise.all([api("/visits" + rq()), api("/evals" + rq())]);
+  const PAGE = 300;
+  const visitList = await api("/visits" + rq());
   const fromStore = query.get("store");
-  const visits = visitList.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }));
+  const prep = (v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null });
+  let vMore = visitList.length >= PAGE;
+  const loadAllVisits = async () => { const all = await api("/visits" + rq("all=1")); vMore = false; visits.splice(0, visits.length, ...all.map(prep)); vg.setRows(visits); vBtn.remove(); draw(); };
+  const vBtn = h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; try { await loadAllVisits(); } catch (ex) { toast(ex.message); e.target.disabled = false; } } }, `Showing newest ${PAGE} — load all`);
+  const visits = visitList.map(prep);
   const removeVisit = async (v) => {
     if (!(await confirmBox("Delete visit?", `${v.trainer_name} at ${v.store_name} on ${fmtDate(v.started_at)} — including ${v.evals + v.drafts} evaluation(s). This cannot be undone.`, "Delete", true))) return;
-    try { await api(`/visits/${v.id}`, { method: "DELETE" }); visits.splice(visits.indexOf(v), 1); vg.setRows(visits); toast("Visit deleted"); } catch (e) { toast(e.message); }
+    try { await api(`/visits/${v.id}`, { method: "DELETE" }); visits.splice(visits.indexOf(v), 1); vg.setRows(visits); evalsGrid = null; toast("Visit deleted"); } catch (e) { toast(e.message); }
   };
   const vg = grid({
     rows: visits, searchIn: (v) => `${v.trainer_name} ${v.trainer_employee_id} ${v.store_code} ${v.store_name} ${v.area_manager || ""} ${v.rom || ""} ${v.city || ""} ${v.notes || ""}`,
     filters: [{ key: "trainer_name", label: "trainers" }, { key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, ...MAP_FILTERS, { key: "store", label: "stores" }],
     initial: fromStore ? { store: visits.find((v) => v.store_code === fromStore)?.store } : {},
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits in this period.",
-    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Trainer", "Employee ID", "Designation", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Evaluations", "Avg score %", "Status", "Follow-up", "Follow-up date", "Notes"],
-      ...vg.rows().map((v) => [v.started_at, v.trainer_name, v.trainer_employee_id, v.trainer_designation, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.evals, v.avg, v.status, v.follow_up ? "Yes" : "", v.follow_up_date || "", v.notes || ""])], `hm-visits-${ymd(new Date())}.xlsx`, "Visits") }, "Export to Excel")],
+    toolbar: [...(vMore ? [vBtn] : []), h("button", { class: "btn teal sm", onclick: async () => { if (vMore) await loadAllVisits(); download([["Date", "Trainer", "Employee ID", "Designation", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Evaluations", "Avg score %", "Status", "Follow-up", "Follow-up date", "Notes"],
+      ...vg.rows().map((v) => [v.started_at, v.trainer_name, v.trainer_employee_id, v.trainer_designation, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.evals, v.avg, v.status, v.follow_up ? "Yes" : "", v.follow_up_date || "", v.notes || ""])], `hm-visits-${ymd(new Date())}.xlsx`, "Visits"); } }, "Export to Excel")],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "trainer_name", label: "Trainer", render: (v) => h("span", {}, h("b", {}, v.trainer_name), h("div", { class: "small muted" }, v.trainer_employee_id)) },
       { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) }, ...MAP_COLS,
       { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Avg score", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip },
@@ -778,30 +790,49 @@ async function adminVisits(query) {
       { key: "del", label: "", nosort: true, render: (v) => h("button", { class: "icon del", title: "Delete visit", "aria-label": `Delete visit to ${v.store_name}`, onclick: (e) => { e.stopPropagation(); removeVisit(v); } }, "🗑") }],
   });
 
-  const evals = evalList.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, trainedPct: e.status === "submitted" ? pct(e.trained_count, e.max_score) : null, when: e.submitted_at || e.created_at }));
-  const removeEval = async (e) => {
-    if (!(await confirmBox("Delete evaluation?", `${e.staff_name} · ${e.position_name} · ${e.store_code}. This permanently removes the evaluation and its answers.`, "Delete", true))) return;
-    try { await api(`/evals/${e.id}`, { method: "DELETE" }); evals.splice(evals.indexOf(e), 1); eg.setRows(evals); toast("Evaluation deleted"); } catch (ex) { toast(ex.message); }
+  // staff evaluations are fetched only when that tab is opened (keeps the page light as data grows)
+  let evalsGrid = null, evalCount = null;
+  const buildEvals = async () => {
+    const list = await api("/evals" + rq());
+    let eMore = list.length >= PAGE;
+    const loadAllEvals = async () => { const all = await api("/evals" + rq("all=1")); eMore = false; evals.splice(0, evals.length, ...all.map(prepE)); eg.setRows(evals); evalCount = evals.length; eBtn.remove(); draw(); };
+    const eBtn = h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; try { await loadAllEvals(); } catch (ex) { toast(ex.message); e.target.disabled = false; } } }, `Showing newest ${PAGE} — load all`);
+    const prepE = (e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, trainedPct: e.status === "submitted" ? pct(e.trained_count, e.max_score) : null, when: e.submitted_at || e.created_at });
+    const evals = list.map(prepE);
+    const removeEval = async (e) => {
+      if (!(await confirmBox("Delete evaluation?", `${e.staff_name} · ${e.position_name} · ${e.store_code}. This permanently removes the evaluation and its answers.`, "Delete", true))) return;
+      try { await api(`/evals/${e.id}`, { method: "DELETE" }); evals.splice(evals.indexOf(e), 1); eg.setRows(evals); evalCount = evals.length; draw(); toast("Evaluation deleted"); } catch (ex) { toast(ex.message); }
+    };
+    const exportEvals = async () => {
+      try {
+        const keep = new Set(eg.rows().map((e) => e.id));
+        const full = (await api("/evals" + rq("full=1"))).filter((e) => e.status === "submitted" && keep.has(e.id));   // full notes, only what the filters show
+        await download([["Date", "Trainer", "Employee ID", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff", "Staff ID", "Position", "Score", "Max", "Score %", "Training %", "Areas for improvement"],
+          ...full.map((e) => [e.submitted_at, e.trainer_name, e.trainer_employee_id, e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.staff_name, e.staff_code || "", e.position_name, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score), e.improvement_notes || ""])], `hm-evaluations-${ymd(new Date())}.xlsx`, "Evaluations");
+      } catch (ex) { toast(ex.message); }
+    };
+    const eg = grid({
+      rows: evals, searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.trainer_name || ""} ${e.store_code} ${e.store_name} ${e.area_manager || ""} ${e.rom || ""} ${e.city || ""} ${e.improvement_notes || ""}`,
+      filters: [{ key: "status", label: "statuses", show: (x) => (x === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, { key: "trainer_name", label: "trainers" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
+      initial: { status: "submitted" }, sort: { key: "when", dir: -1 }, onRow: (e) => (location.hash = `#/eval/${e.id}`), empty: "No evaluations match.",
+      toolbar: [...(eMore ? [eBtn] : []), h("button", { class: "btn teal sm", onclick: async () => { if (eMore) await loadAllEvals(); exportEvals(); } }, "Export to Excel")],
+      cols: [{ key: "staff_name", label: "Staff", render: (e) => h("span", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)) }, { key: "position_name", label: "Position" },
+        { key: "trainer_name", label: "Trainer" }, { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, ...MAP_COLS, { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
+        { key: "pctv", label: "Score", num: true, render: (e) => (e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : avgCell(e.pctv)) },
+        { key: "trainedPct", label: "Training", num: true, render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(e.trainedPct) : "") },
+        { key: "improvement_notes", label: "Areas for improvement", render: (e) => h("span", { class: "small" }, trunc(e.improvement_notes, 70)) },
+        { key: "del", label: "", nosort: true, render: (e) => h("button", { class: "icon del", title: "Delete evaluation", "aria-label": `Delete evaluation of ${e.staff_name}`, onclick: (ev) => { ev.stopPropagation(); removeEval(e); } }, "🗑") }],
+    });
+    evalCount = evals.length; return eg;
   };
-  const eg = grid({
-    rows: evals, searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.trainer_name || ""} ${e.store_code} ${e.store_name} ${e.area_manager || ""} ${e.rom || ""} ${e.city || ""} ${e.improvement_notes || ""}`,
-    filters: [{ key: "status", label: "statuses", show: (x) => (x === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, { key: "trainer_name", label: "trainers" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
-    initial: { status: "submitted" }, sort: { key: "when", dir: -1 }, onRow: (e) => (location.hash = `#/eval/${e.id}`), empty: "No evaluations match.",
-    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Trainer", "Employee ID", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff", "Staff ID", "Position", "Score", "Max", "Score %", "Training %", "Areas for improvement"],
-      ...eg.rows().filter((e) => e.status === "submitted").map((e) => [e.submitted_at, e.trainer_name, e.trainer_employee_id, e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.staff_name, e.staff_code || "", e.position_name, e.score, e.max_score, e.pctv, e.trainedPct, e.improvement_notes || ""])], `hm-evaluations-${ymd(new Date())}.xlsx`, "Evaluations") }, "Export to Excel")],
-    cols: [{ key: "staff_name", label: "Staff", render: (e) => h("span", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)) }, { key: "position_name", label: "Position" },
-      { key: "trainer_name", label: "Trainer" }, { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, ...MAP_COLS, { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
-      { key: "pctv", label: "Score", num: true, render: (e) => (e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : avgCell(e.pctv)) },
-      { key: "trainedPct", label: "Training", num: true, render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(e.trainedPct) : "") },
-      { key: "improvement_notes", label: "Areas for improvement", render: (e) => h("span", { class: "small" }, trunc(e.improvement_notes, 70)) },
-      { key: "del", label: "", nosort: true, render: (e) => h("button", { class: "icon del", title: "Delete evaluation", "aria-label": `Delete evaluation of ${e.staff_name}`, onclick: (ev) => { ev.stopPropagation(); removeEval(e); } }, "🗑") }],
-  });
 
   const holder = h("div"), tabBar = h("div", { class: "tabs", style: "margin-bottom:12px" });
-  const draw = () => {
+  const draw = async () => {
     tabBar.replaceChildren(h("button", { type: "button", class: "tab" + (visitsTab === "visits" ? " on" : ""), onclick: () => { visitsTab = "visits"; draw(); } }, `Visits (${visits.length})`),
-      h("button", { type: "button", class: "tab" + (visitsTab === "evals" ? " on" : ""), onclick: () => { visitsTab = "evals"; draw(); } }, `Staff evaluations (${evals.length})`));
-    holder.replaceChildren(visitsTab === "visits" ? vg.el : eg.el);
+      h("button", { type: "button", class: "tab" + (visitsTab === "evals" ? " on" : ""), onclick: () => { visitsTab = "evals"; draw(); } }, `Staff evaluations${evalCount == null ? "" : ` (${evalCount})`}`));
+    if (visitsTab === "visits") return holder.replaceChildren(vg.el);
+    if (!evalsGrid) { holder.replaceChildren(h("p", { class: "muted" }, "Loading evaluations…")); try { evalsGrid = await buildEvals(); } catch (e) { return holder.replaceChildren(h("p", { class: "err" }, e.message)); } if (visitsTab !== "evals") return; draw(); return; }
+    holder.replaceChildren(evalsGrid.el);
   };
   draw();
   return shell(h("div", {}, pageHead("Visits", "Every store visit by every trainer — sort and filter by trainer, store, area manager, ROM, region or city.", rangeBar()), h("div", { class: "card" }, tabBar, holder)), "#/admin/visits");
@@ -881,7 +912,7 @@ async function adminStores() {
   const form = async (s) => {
     const f = {
       name: h("input", { type: "text", value: s?.name || "", maxlength: 120, required: true }),
-      code: h("input", { type: "text", value: s?.code || "", maxlength: 40, placeholder: s ? "" : "Leave empty to auto-create" }),
+      code: h("input", { type: "text", value: s?.code || "", maxlength: 40, placeholder: s ? "" : "Leave empty to auto-create", disabled: !!s && !s.manual, title: s && !s.manual ? "From the mapping file — the weekly sync uses this ID" : "" }),
       area_manager: h("input", { type: "text", value: s?.area_manager || "", maxlength: 80 }),
       rom: h("input", { type: "text", value: s?.rom || "", maxlength: 80 }),
       region: h("input", { type: "text", value: s?.region || "", maxlength: 80 }),
@@ -893,7 +924,7 @@ async function adminStores() {
       s && !s.manual && h("p", { class: "small muted", style: "margin:0" }, "Details you change here are kept — the weekly mapping sync will not overwrite them.")),
       (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(true) }, s ? "Save" : "Add store")]);
     if (!ok) return;
-    const body = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value.trim()]));
+    const body = Object.fromEntries(Object.entries(f).filter(([k, el]) => !el.disabled).map(([k, el]) => [k, el.value.trim()]));
     try { if (s) await api(`/admin/stores/${s.id}`, { method: "PATCH", body }); else await api("/admin/stores", { method: "POST", body }); toast(s ? "Store updated" : "Store added"); await refresh(); }
     catch (e) { toast(e.message); }
   };
@@ -907,7 +938,7 @@ async function adminStores() {
       { key: "code", label: "Store ID", render: (s) => h("b", {}, s.code) },
       { key: "name", label: "Store", render: (s) => h("span", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled"), s.manual && h("span", { class: "chip", style: "margin-left:8px" }, "Added by hand")) },
       ...MAP_COLS,
-      { key: "visits", label: "Visits", num: true }, { key: "evaluations", label: "Evaluations", num: true }, { key: "last_visit", label: "Last visit", render: (s) => lastVisitCell(s.last_visit) },
+      { key: "visits", label: "Visits", num: true }, { key: "last_visit", label: "Last visit", render: (s) => lastVisitCell(s.last_visit) },
       { key: "actions", label: "", nosort: true, render: (s) => h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
         h("button", { class: "btn ghost sm", onclick: () => form(s) }, "Edit"),
         h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); await refresh(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),

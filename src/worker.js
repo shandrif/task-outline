@@ -2,11 +2,11 @@
 // Trainers sign up, visit stores and evaluate staff; the admin sees everything. Static front-end lives in /public.
 
 const COOKIE = "hm_session";
-const SESSION_TTL = 60 * 60 * 12; // 12 h
+const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
+const TRAINER_TTL = 60 * 60 * 24 * 7; // trainers: 7 days
 const MAX_ATTEMPTS = 8;
 const ATTEMPT_WINDOW = 15 * 60; // seconds
-// Moderate on purpose: the Workers Free plan allows ~10 ms CPU per request. The count is stored inside every hash, so it can be raised later.
-const PBKDF2_ITERS = 10000;
+const PBKDF2_ITERS = 4000;
 
 // ---------- small helpers ----------
 const enc = new TextEncoder();
@@ -34,6 +34,8 @@ function str(v, max, field, { required = false, min = 0 } = {}) {
 }
 // YYYY-MM-DD or null (used for date-range filters)
 const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null);
+// "YYYY-MM-DD HH:MM:SS" (UTC) or null — range bounds sent by the browser
+const ts = (v) => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(v || "") ? v.replace("T", " ") : null);
 
 async function hmac(secret, data) {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -48,17 +50,23 @@ async function safeEqual(secret, a, b) {
 }
 
 // ---------- trainer passwords (hashed, never recoverable) ----------
-async function hashPassword(password, iters = PBKDF2_ITERS) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iters }, key, 256);
-  return `pbkdf2$${iters}$${b64u(salt)}$${b64u(bits)}`;
+// password -> HMAC(PASSWORD_KEY secret) -> PBKDF2. The secret lives in Cloudflare, not in the database, so a leaked database
+// cannot be brute-forced offline. The iteration count is deliberately modest to stay inside the Workers Free ~10 ms CPU budget
+// and is stored in every hash, so it can be raised later (e.g. on the paid plan).
+async function pwBits(env, password, salt, iters, peppered) {
+  if (peppered && !env.PASSWORD_KEY) throw new HttpError(500, "PASSWORD_KEY is not configured");
+  const material = peppered ? await hmac(env.PASSWORD_KEY, password) : enc.encode(password);
+  const key = await crypto.subtle.importKey("raw", material, "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iters }, key, 256));
 }
-async function verifyPassword(password, stored) {
+async function hashPassword(env, password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return `pbkdf2p$${PBKDF2_ITERS}$${b64u(salt)}$${b64u(await pwBits(env, password, salt, PBKDF2_ITERS, true))}`;
+}
+async function verifyPassword(env, password, stored) {
   const [alg, iters, salt, hash] = (stored || "").split("$");
-  if (alg !== "pbkdf2" || !hash) return false;
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: unb64u(salt), iterations: +iters }, key, 256));
+  if ((alg !== "pbkdf2" && alg !== "pbkdf2p") || !hash) return false;
+  const bits = await pwBits(env, password, unb64u(salt), +iters, alg === "pbkdf2p");
   const want = unb64u(hash);
   let d = bits.length ^ want.length;
   for (let i = 0; i < bits.length; i++) d |= bits[i] ^ (want[i] ?? 0);
@@ -79,8 +87,8 @@ function checkPassword(p) {
 }
 
 // ---------- sessions ----------
-async function signSession(env, payload) {
-  const body = b64u(enc.encode(JSON.stringify({ ...payload, exp: now() + SESSION_TTL })));
+async function signSession(env, payload, ttl = SESSION_TTL) {
+  const body = b64u(enc.encode(JSON.stringify({ ...payload, exp: now() + ttl })));
   return `${body}.${b64u(await hmac(env.SESSION_SECRET, body))}`;
 }
 
@@ -133,12 +141,12 @@ async function login(env, request, ctx) {
     return json({ role: "admin" }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
   }
   const t = found.results[0];
-  if (!t || !(await verifyPassword(password, t.password_hash))) return fail();
+  if (!t || !(await verifyPassword(env, password, t.password_hash))) return fail();
   if (t.status === "pending") throw new HttpError(403, "Your account is waiting for admin approval.");
   if (t.status !== "approved") throw new HttpError(403, "This account is disabled. Please contact the admin.");
   ctx.waitUntil(env.DB.prepare("UPDATE trainers SET last_login=CURRENT_TIMESTAMP WHERE id=?").bind(t.id).run());
-  const token = await signSession(env, { role: "trainer", tid: t.id, pv: t.pw_version });
-  return json({ role: "trainer", trainer: { id: t.id, name: t.name, designation: t.designation, employee_id: t.employee_id } }, 200, { "set-cookie": cookieHeader(request, token, SESSION_TTL) });
+  const token = await signSession(env, { role: "trainer", tid: t.id, pv: t.pw_version }, TRAINER_TTL);
+  return json({ role: "trainer", trainer: { id: t.id, name: t.name, designation: t.designation, employee_id: t.employee_id } }, 200, { "set-cookie": cookieHeader(request, token, TRAINER_TTL) });
 }
 
 async function signup(env, request, ctx) {
@@ -159,7 +167,7 @@ async function signup(env, request, ctx) {
   if (cnt.results[0].n >= 10) throw new HttpError(429, "Too many sign-ups from this device. Try again later.");
   ctx.waitUntil(env.DB.prepare("INSERT INTO login_attempts (key,at) VALUES (?,?)").bind(key, now()).run());
   try {
-    await env.DB.prepare("INSERT INTO trainers (employee_id,name,designation,password_hash) VALUES (?,?,?,?)").bind(employeeId, name, designation, await hashPassword(password)).run();
+    await env.DB.prepare("INSERT INTO trainers (employee_id,name,designation,password_hash) VALUES (?,?,?,?)").bind(employeeId, name, designation, await hashPassword(env, password)).run();
   } catch (e) {
     if (/UNIQUE/i.test(String(e?.message))) throw new HttpError(409, "This employee ID is already registered. Try signing in instead.");
     throw e;
@@ -279,19 +287,9 @@ async function saveAnswers(env, session, id, body) {
 }
 
 // ---------- reports (admin) ----------
-// ?1 = from date, ?2 = to date (either may be NULL = unbounded)
-const RV = (a = "v") => `(?1 IS NULL OR date(${a}.started_at) >= ?1) AND (?2 IS NULL OR date(${a}.started_at) <= ?2)`;
-const RE = (a = "e") => `${a}.status='submitted' AND (?1 IS NULL OR date(${a}.submitted_at) >= ?1) AND (?2 IS NULL OR date(${a}.submitted_at) <= ?2)`;
-
-const TRAINER_STATS_SQL = `SELECT t.id,t.employee_id,t.name,t.designation,t.status,t.created_at,t.approved_at,t.last_login,
-    (SELECT COUNT(*) FROM visits v WHERE v.trainer_id=t.id AND ${RV()}) visits,
-    (SELECT COUNT(DISTINCT v.store_id) FROM visits v WHERE v.trainer_id=t.id AND ${RV()}) stores_visited,
-    (SELECT MAX(v.started_at) FROM visits v WHERE v.trainer_id=t.id) last_visit,
-    (SELECT COUNT(*) FROM evaluations e WHERE e.trainer_id=t.id AND ${RE()}) evaluations,
-    (SELECT COUNT(DISTINCT lower(e.staff_name)||'|'||e.store_id) FROM evaluations e WHERE e.trainer_id=t.id AND ${RE()}) staff_evaluated,
-    (SELECT COALESCE(SUM(e.score),0) FROM evaluations e WHERE e.trainer_id=t.id AND ${RE()}) sum_score,
-    (SELECT COALESCE(SUM(e.max_score),0) FROM evaluations e WHERE e.trainer_id=t.id AND ${RE()}) sum_max,
-    (SELECT COALESCE(SUM(e.trained_count),0) FROM evaluations e WHERE e.trainer_id=t.id AND ${RE()}) sum_trained`;
+// ?1 = from (inclusive), ?2 = to (exclusive), UTC timestamps; either may be NULL = unbounded
+const RV = (a = "v") => `(?1 IS NULL OR ${a}.started_at >= ?1) AND (?2 IS NULL OR ${a}.started_at < ?2)`;
+const RE = (a = "e") => `${a}.status='submitted' AND (?1 IS NULL OR ${a}.submitted_at >= ?1) AND (?2 IS NULL OR ${a}.submitted_at < ?2)`;
 
 const VISITS_SQL = `SELECT v.id,v.status,v.started_at,v.ended_at,v.notes,v.follow_up,v.follow_up_date,v.trainer_id,
     t.name trainer_name,t.employee_id trainer_employee_id,t.designation trainer_designation,
@@ -303,56 +301,75 @@ const VISITS_SQL = `SELECT v.id,v.status,v.started_at,v.ended_at,v.notes,v.follo
     (SELECT COALESCE(SUM(e.max_score),0) FROM evaluations e WHERE e.visit_id=v.id AND e.status='submitted') sum_max
   FROM visits v JOIN trainers t ON t.id=v.trainer_id JOIN stores st ON st.id=v.store_id`;
 
+// Weakest areas / notes look at the latest 2,000 submitted evaluations in the period (date-indexed), so their cost stays small however much data builds up.
 const WEAK_SQL = (extra = "") => `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
-    FROM eval_sections es JOIN evaluations e ON e.id=es.evaluation_id AND ${RE()} ${extra}
-    JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
+    FROM (SELECT e.id FROM evaluations e WHERE ${RE()} ${extra} ORDER BY e.submitted_at DESC LIMIT 2000) r
+    JOIN eval_sections es ON es.evaluation_id=r.id JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
     GROUP BY s.id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8`;
 
 const NOTES_SQL = (extra = "") => `SELECT e.id,e.staff_name,e.improvement_notes,e.submitted_at,p.name position,t.name trainer_name,st.name store_name,st.username store_code
     FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id LEFT JOIN trainers t ON t.id=e.trainer_id
-    WHERE ${RE()} AND e.improvement_notes IS NOT NULL AND e.improvement_notes<>'' ${extra} ORDER BY e.id DESC LIMIT 12`;
+    WHERE ${RE()} AND e.improvement_notes IS NOT NULL AND e.improvement_notes<>'' ${extra} ORDER BY e.submitted_at DESC LIMIT 12`;
+
+// One pass over the visits and one over the evaluations in the period (indexed by date), grouped; everything else is derived in memory.
+// (Per-trainer / per-store correlated sub-queries re-scanned the same rows dozens of times.)
+async function aggregate(env, from, to, trainerId = null) {
+  const A = [from, to, trainerId];
+  const who = "AND (?3 IS NULL OR e.trainer_id=?3)";
+  const [trainers, stores, positions, visitAgg, evalAgg, posAgg, weakest, notes, misc] = await env.DB.batch([
+    env.DB.prepare("SELECT id,employee_id,name,designation,status,created_at,approved_at,last_login,last_visit_at FROM trainers WHERE (?1 IS NULL OR id=?1)").bind(trainerId),
+    env.DB.prepare("SELECT id,name,username,area_manager,rom,region,city,active,last_visit_at FROM stores WHERE active=1 ORDER BY username COLLATE NOCASE LIMIT 400"),
+    env.DB.prepare("SELECT id,name FROM positions WHERE active=1 ORDER BY sort,id"),
+    env.DB.prepare(`SELECT v.trainer_id, v.store_id, COUNT(*) n FROM visits v WHERE ${RV()} AND (?3 IS NULL OR v.trainer_id=?3) GROUP BY v.trainer_id, v.store_id`).bind(...A),
+    // grouped by (trainer, store) — at most trainers x stores rows — so the Worker's own loop stays tiny
+    env.DB.prepare(`SELECT e.trainer_id, e.store_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx, SUM(e.trained_count) tr, COUNT(DISTINCT lower(e.staff_name)) staff
+                    FROM evaluations e WHERE ${RE()} ${who} GROUP BY e.trainer_id, e.store_id`).bind(...A),
+    env.DB.prepare(`SELECT e.position_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx FROM evaluations e WHERE ${RE()} ${who} GROUP BY e.position_id`).bind(...A),
+    env.DB.prepare(WEAK_SQL(who)).bind(...A),
+    env.DB.prepare(NOTES_SQL(who)).bind(...A),
+    env.DB.prepare("SELECT (SELECT COUNT(*) FROM trainers WHERE status='pending') pending, (SELECT COUNT(*) FROM trainers WHERE status='approved') approved, (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts"),
+  ]);
+
+  const T = new Map(trainers.results.map((t) => [t.id, { ...t, last_visit: t.last_visit_at, visits: 0, stores: new Set(), evaluations: 0, staff_evaluated: 0, sum_score: 0, sum_max: 0, sum_trained: 0 }]));
+  const S = new Map(stores.results.map((x) => [x.id, { ...x, last_visit: x.last_visit_at, visits: 0, evaluations: 0, sum_score: 0, sum_max: 0 }]));
+  const P = new Map(positions.results.map((x) => [x.id, { id: x.id, name: x.name, evaluations: 0, sc: 0, mx: 0 }]));
+  const tot = { visits: 0, evaluations: 0, sc: 0, mx: 0, tr: 0 };
+  for (const r of visitAgg.results) {
+    tot.visits += r.n;
+    const t = T.get(r.trainer_id); if (t) { t.visits += r.n; t.stores.add(r.store_id); }
+    const st = S.get(r.store_id); if (st) st.visits += r.n;
+  }
+  for (const r of evalAgg.results) {
+    tot.evaluations += r.n; tot.sc += r.sc || 0; tot.mx += r.mx || 0; tot.tr += r.tr || 0;
+    const t = T.get(r.trainer_id); if (t) { t.evaluations += r.n; t.staff_evaluated += r.staff; t.sum_score += r.sc || 0; t.sum_max += r.mx || 0; t.sum_trained += r.tr || 0; }
+    const st = S.get(r.store_id); if (st) { st.evaluations += r.n; st.sum_score += r.sc || 0; st.sum_max += r.mx || 0; }
+  }
+  for (const r of posAgg.results) { const p = P.get(r.position_id); if (p) { p.evaluations += r.n; p.sc += r.sc || 0; p.mx += r.mx || 0; } }
+  const r1 = (a, b) => (b ? Math.round((1000 * a) / b) / 10 : null);
+  const byStore = [...S.values()];
+  return {
+    totals: {
+      stores: byStore.length, trainers: misc.results[0].approved, pending: misc.results[0].pending, drafts: misc.results[0].drafts,
+      visits: tot.visits, stores_visited: byStore.filter((x) => x.visits > 0).length, evaluations: tot.evaluations,
+      avg_pct: r1(tot.sc, tot.mx), trained_pct: r1(tot.tr, tot.mx),
+    },
+    byTrainer: [...T.values()].map(({ stores: set, last_visit_at, ...t }) => ({ ...t, stores_visited: set.size })),
+    byPosition: [...P.values()].map((p) => ({ id: p.id, name: p.name, evaluations: p.evaluations, avg_pct: r1(p.sc, p.mx) })),
+    byStore, weakest: weakest.results, notes: notes.results,
+  };
+}
 
 async function summary(env, from, to) {
-  const A = [from, to];
-  const [totals, byTrainer, byPosition, byStore, weakest, notes] = await env.DB.batch([
-    env.DB.prepare(
-      `SELECT (SELECT COUNT(*) FROM stores WHERE active=1) stores,
-              (SELECT COUNT(*) FROM trainers WHERE status='approved') trainers,
-              (SELECT COUNT(*) FROM trainers WHERE status='pending') pending,
-              (SELECT COUNT(*) FROM visits v WHERE ${RV()}) visits,
-              (SELECT COUNT(DISTINCT v.store_id) FROM visits v JOIN stores s ON s.id=v.store_id AND s.active=1 WHERE ${RV()}) stores_visited,
-              (SELECT COUNT(*) FROM evaluations e WHERE ${RE()}) evaluations,
-              (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts,
-              (SELECT ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) FROM evaluations e WHERE ${RE()}) avg_pct,
-              (SELECT ROUND(100.0*SUM(e.trained_count)/NULLIF(SUM(e.max_score),0),1) FROM evaluations e WHERE ${RE()}) trained_pct`).bind(...A),
-    env.DB.prepare(`${TRAINER_STATS_SQL} FROM trainers t ORDER BY t.name COLLATE NOCASE`).bind(...A),
-    env.DB.prepare(
-      `SELECT p.id,p.name,COUNT(e.id) evaluations,ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) avg_pct
-       FROM positions p LEFT JOIN evaluations e ON e.position_id=p.id AND ${RE()} WHERE p.active=1 GROUP BY p.id ORDER BY p.sort,p.id`).bind(...A),
-    env.DB.prepare(
-      `SELECT s.id,s.name,s.username,s.area_manager,s.rom,s.region,s.city,s.active,
-              (SELECT COUNT(*) FROM visits v WHERE v.store_id=s.id AND ${RV()}) visits,
-              (SELECT MAX(v.started_at) FROM visits v WHERE v.store_id=s.id) last_visit,
-              (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND ${RE()}) evaluations,
-              (SELECT COALESCE(SUM(e.score),0) FROM evaluations e WHERE e.store_id=s.id AND ${RE()}) sum_score,
-              (SELECT COALESCE(SUM(e.max_score),0) FROM evaluations e WHERE e.store_id=s.id AND ${RE()}) sum_max
-       FROM stores s WHERE s.active=1 ORDER BY s.username COLLATE NOCASE LIMIT 400`).bind(...A),
-    env.DB.prepare(WEAK_SQL()).bind(...A),
-    env.DB.prepare(NOTES_SQL()).bind(...A),
-  ]);
-  return { totals: totals.results[0], byTrainer: byTrainer.results, byPosition: byPosition.results, byStore: byStore.results, weakest: weakest.results, notes: notes.results };
+  return aggregate(env, from, to);
 }
 
 async function trainerDetail(env, id, from, to) {
-  const A = [from, to];
-  const [one, visits, weak, notes] = await env.DB.batch([
-    env.DB.prepare(`${TRAINER_STATS_SQL} FROM trainers t WHERE t.id=?3`).bind(...A, id),
-    env.DB.prepare(`${VISITS_SQL} WHERE v.trainer_id=?3 AND ${RV()} ORDER BY v.id DESC LIMIT 1000`).bind(...A, id),
-    env.DB.prepare(WEAK_SQL("AND e.trainer_id=?3")).bind(...A, id),
-    env.DB.prepare(NOTES_SQL("AND e.trainer_id=?3")).bind(...A, id),
+  const [agg, visits] = await Promise.all([
+    aggregate(env, from, to, id),
+    env.DB.prepare(`${VISITS_SQL} WHERE v.trainer_id=?3 AND ${RV()} ORDER BY v.id DESC LIMIT 1000`).bind(from, to, id).all(),
   ]);
-  if (!one.results[0]) throw new HttpError(404, "Trainer not found");
-  return { trainer: one.results[0], visits: visits.results, weakest: weak.results, notes: notes.results };
+  if (!agg.byTrainer[0]) throw new HttpError(404, "Trainer not found");
+  return { trainer: agg.byTrainer[0], visits: visits.results, weakest: agg.weakest, notes: agg.notes, storesTotal: agg.totals.stores };
 }
 
 // ----- admin: ordering -----
@@ -405,7 +422,7 @@ async function handle(request, env, ctx) {
   const needAdmin = () => { if (!isAdmin) throw new HttpError(403, "Admin only"); };
   const needTrainer = () => { if (isAdmin) throw new HttpError(403, "This action is done from a trainer account"); };
   const body = () => request.json().catch(() => { throw bad("Invalid JSON"); });
-  const from = day(url.searchParams.get("from")), to = day(url.searchParams.get("to"));
+  const from = ts(url.searchParams.get("from")), to = ts(url.searchParams.get("to"));
 
   // --- shared reads ---
   if (path === "/api/positions" && method === "GET") return json(await listPositions(env));
@@ -413,13 +430,21 @@ async function handle(request, env, ctx) {
 
   // --- stores (read-only list for the dropdown) ---
   if (path === "/api/stores" && method === "GET") {
-    const tid = isAdmin ? null : session.trainer.id;
-    return json((await env.DB.prepare(
-      `SELECT s.id,s.username code,s.name,s.region,s.city,s.area_manager,s.rom,
-              (SELECT COUNT(*) FROM visits v WHERE v.store_id=s.id AND v.trainer_id=?1) my_visits,
-              (SELECT MAX(v.started_at) FROM visits v WHERE v.store_id=s.id AND v.trainer_id=?1) my_last_visit
-       FROM stores s WHERE s.active=1 ORDER BY s.name COLLATE NOCASE`
-    ).bind(tid).all()).results);
+    const [st, mine] = await env.DB.batch([
+      env.DB.prepare("SELECT id,username code,name,region,city,area_manager,rom FROM stores WHERE active=1 ORDER BY name COLLATE NOCASE"),
+      env.DB.prepare("SELECT store_id, COUNT(*) n, MAX(started_at) last_at FROM visits WHERE trainer_id=?1 GROUP BY store_id").bind(isAdmin ? null : session.trainer.id),
+    ]);
+    const by = new Map(mine.results.map((r) => [r.store_id, r]));
+    return json(st.results.map((x) => ({ ...x, my_visits: by.get(x.id)?.n || 0, my_last_visit: by.get(x.id)?.last_at || null })));
+  }
+  if (path === "/api/my/stats" && method === "GET") {
+    needTrainer();
+    const [v, e] = await env.DB.batch([
+      // last 30 days only (date-indexed), so the home page stays cheap however long someone has been visiting
+      env.DB.prepare("SELECT COUNT(*) visits, COUNT(DISTINCT store_id) stores FROM visits WHERE trainer_id=? AND started_at >= datetime('now','-30 days')").bind(session.trainer.id),
+      env.DB.prepare("SELECT COUNT(*) evaluations, COALESCE(SUM(score),0) sum_score, COALESCE(SUM(max_score),0) sum_max FROM evaluations WHERE trainer_id=? AND status='submitted' AND submitted_at >= datetime('now','-30 days')").bind(session.trainer.id),
+    ]);
+    return json({ ...v.results[0], ...e.results[0] });
   }
   if ((m = path.match(/^\/api\/stores\/(\d+)\/staff$/)) && method === "GET") {
     return json((await env.DB.prepare(
@@ -431,17 +456,23 @@ async function handle(request, env, ctx) {
   // --- visits ---
   if (path === "/api/visits" && method === "GET") {
     const tid = isAdmin ? (url.searchParams.get("trainer") ? +url.searchParams.get("trainer") : null) : session.trainer.id;
-    return json((await env.DB.prepare(`${VISITS_SQL} WHERE (?3 IS NULL OR v.trainer_id=?3) AND ${RV()} ORDER BY v.id DESC LIMIT 2000`).bind(from, to, tid).all()).results);
+    const more = url.searchParams.get("all") === "1";
+    const limit = more ? 2000 : isAdmin ? 300 : 60;   // newest first; older rows load on request (keeps responses small and fast)
+    return json((await env.DB.prepare(`${VISITS_SQL} WHERE (?3 IS NULL OR v.trainer_id=?3) AND ${RV()} ORDER BY v.id DESC LIMIT ${limit}`).bind(from, to, tid).all()).results);
   }
   if (path === "/api/visits" && method === "POST") {
     needTrainer();
     const b = await body();
     const store = await env.DB.prepare("SELECT id FROM stores WHERE id=? AND active=1").bind(+b.store_id).first();
     if (!store) throw bad("Choose a store");
-    // continue an open visit to the same store instead of creating a duplicate
-    const open = await env.DB.prepare("SELECT id FROM visits WHERE trainer_id=? AND store_id=? AND status='open' ORDER BY id DESC LIMIT 1").bind(session.trainer.id, store.id).first();
+    // continue an open visit to the same store (same shift) instead of creating a duplicate
+    const open = await env.DB.prepare("SELECT id FROM visits WHERE trainer_id=? AND store_id=? AND status='open' AND started_at >= datetime('now','-18 hours') ORDER BY id DESC LIMIT 1").bind(session.trainer.id, store.id).first();
     if (open) return json({ id: open.id, existing: true });
-    const r = await env.DB.prepare("INSERT INTO visits (trainer_id,store_id) VALUES (?,?)").bind(session.trainer.id, store.id).run();
+    const [r] = await env.DB.batch([
+      env.DB.prepare("INSERT INTO visits (trainer_id,store_id) VALUES (?,?)").bind(session.trainer.id, store.id),
+      env.DB.prepare("UPDATE trainers SET last_visit_at=CURRENT_TIMESTAMP WHERE id=?").bind(session.trainer.id),
+      env.DB.prepare("UPDATE stores SET last_visit_at=CURRENT_TIMESTAMP WHERE id=?").bind(store.id),
+    ]);
     return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/visits\/(\d+)$/))) {
@@ -461,7 +492,7 @@ async function handle(request, env, ctx) {
       if (!visit || (!isAdmin && visit.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
       return json({ visit, evaluations: evs.results, staff: staff.results });
     }
-    const own = await env.DB.prepare("SELECT trainer_id,status FROM visits WHERE id=?").bind(id).first();
+    const own = await env.DB.prepare("SELECT trainer_id,store_id,status FROM visits WHERE id=?").bind(id).first();
     if (!own || (!isAdmin && own.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
     if (method === "PATCH") {
       const b = await body();
@@ -477,6 +508,8 @@ async function handle(request, env, ctx) {
         env.DB.prepare("DELETE FROM eval_sections WHERE evaluation_id IN (SELECT id FROM evaluations WHERE visit_id=?)").bind(id),
         env.DB.prepare("DELETE FROM evaluations WHERE visit_id=?").bind(id),
         env.DB.prepare("DELETE FROM visits WHERE id=?").bind(id),
+        env.DB.prepare("UPDATE trainers SET last_visit_at=(SELECT MAX(started_at) FROM visits WHERE trainer_id=trainers.id) WHERE id=?").bind(own.trainer_id),
+        env.DB.prepare("UPDATE stores SET last_visit_at=(SELECT MAX(started_at) FROM visits WHERE store_id=stores.id) WHERE id=?").bind(own.store_id),
       ]);
       return json({ ok: true });
     }
@@ -499,12 +532,13 @@ async function handle(request, env, ctx) {
 
   // --- evaluations ---
   if (path === "/api/evals" && method === "GET") {
+    const full = url.searchParams.get("full") === "1";
     return json((await env.DB.prepare(
-      `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.created_at,e.submitted_at,e.improvement_notes,e.position_id,e.visit_id,e.trainer_id,p.name position_name,
+      `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.created_at,e.submitted_at,${full ? "e.improvement_notes" : "substr(e.improvement_notes,1,200) improvement_notes"},e.position_id,e.visit_id,e.trainer_id,p.name position_name,
               st.id store_id,st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,t.name trainer_name,t.employee_id trainer_employee_id
        FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id LEFT JOIN trainers t ON t.id=e.trainer_id
-       WHERE (?2 IS NULL OR e.trainer_id=?2) AND (?1 IS NULL OR date(e.created_at) >= ?1) ORDER BY e.id DESC LIMIT 3000`
-    ).bind(from, isAdmin ? null : session.trainer.id).all()).results);
+       WHERE (?2 IS NULL OR e.trainer_id=?2) AND (?1 IS NULL OR e.created_at >= ?1) AND (?3 IS NULL OR e.created_at < ?3) ORDER BY e.id DESC LIMIT ${full || url.searchParams.get("all") === "1" ? 2000 : 300}`
+    ).bind(from, isAdmin ? null : session.trainer.id, to).all()).results);
   }
   if (path === "/api/evals" && method === "POST") {
     needTrainer();
@@ -552,7 +586,7 @@ async function handle(request, env, ctx) {
 
   // trainers
   if (path === "/api/admin/trainers" && method === "GET") {
-    return json((await env.DB.prepare(`${TRAINER_STATS_SQL} FROM trainers t ORDER BY (t.status='pending') DESC, t.name COLLATE NOCASE`).bind(from, to).all()).results);
+    return json((await aggregate(env, from, to)).byTrainer.sort((a, b) => (b.status === "pending") - (a.status === "pending") || a.name.localeCompare(b.name)));
   }
   if ((m = path.match(/^\/api\/admin\/trainers\/(\d+)$/))) {
     const id = +m[1];
@@ -590,21 +624,19 @@ async function handle(request, env, ctx) {
     const password = str(b.password, 100, "Password") || tempPassword();
     checkPassword(password);
     // bumping pw_version signs the trainer out everywhere
-    await env.DB.prepare("UPDATE trainers SET password_hash=?, pw_version=pw_version+1 WHERE id=? AND employee_id<>'LEGACY'").bind(await hashPassword(password), +m[1]).run();
+    await env.DB.prepare("UPDATE trainers SET password_hash=?, pw_version=pw_version+1 WHERE id=? AND employee_id<>'LEGACY'").bind(await hashPassword(env, password), +m[1]).run();
     return json({ password });
   }
 
   // stores
   if (path === "/api/admin/stores" && method === "GET") {
-    const [last, stores] = await env.DB.batch([
+    const [last, stores, vc] = await env.DB.batch([
       env.DB.prepare("SELECT at,total,added,disabled FROM sync_log ORDER BY id DESC LIMIT 1"),
-      env.DB.prepare(
-        `SELECT s.id,s.username code,s.name,s.region,s.city,s.area_manager,s.rom,s.active,s.manual,s.locked,
-                (SELECT COUNT(*) FROM visits v WHERE v.store_id=s.id) visits,
-                (SELECT MAX(v.started_at) FROM visits v WHERE v.store_id=s.id) last_visit,
-                (SELECT COUNT(*) FROM evaluations e WHERE e.store_id=s.id AND e.status='submitted') evaluations
-         FROM stores s ORDER BY s.name COLLATE NOCASE`),
+      env.DB.prepare("SELECT s.id,s.username code,s.name,s.region,s.city,s.area_manager,s.rom,s.active,s.manual,s.locked,s.last_visit_at last_visit FROM stores s ORDER BY s.name COLLATE NOCASE"),
+      env.DB.prepare("SELECT store_id, COUNT(*) n FROM visits GROUP BY store_id"),
     ]);
+    const counts = new Map(vc.results.map((r) => [r.store_id, r.n]));
+    stores.results = stores.results.map((x) => ({ ...x, visits: counts.get(x.id) || 0 }));
     return json({ lastSync: last.results[0] || null, stores: stores.results });
   }
   if (path === "/api/admin/stores" && method === "POST") {
@@ -629,6 +661,12 @@ async function handle(request, env, ctx) {
     if (method === "PATCH") {
       const b = await body();
       const f = STORE_FIELDS(b);
+      if (f.code) {
+        const cur = await env.DB.prepare("SELECT manual,username FROM stores WHERE id=?").bind(id).first();
+        if (!cur) throw new HttpError(404, "Store not found");
+        if (!cur.manual && f.code.toLowerCase() !== cur.username.toLowerCase()) throw bad("The Store ID of a store from the mapping file can't be changed (the weekly sync uses it)");
+        if (f.code.toLowerCase() === cur.username.toLowerCase()) f.code = null;
+      }
       try {
         await env.DB.prepare(
           `UPDATE stores SET name=COALESCE(?1,name), username=COALESCE(?2,username), code=COALESCE(?2,code), area_manager=COALESCE(?3,area_manager), rom=COALESCE(?4,rom),
