@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Sync stores + Area Manager / ROM / Region / City from the "AM & ROM Mapping" sheet into D1.
+// Stores an admin edited by hand (locked) keep their details; stores added by hand are never disabled.
 // Usage: node scripts/sync-mapping.mjs <file.tsv|file.json> [--local] [--dry-run]
 //   .tsv  = the sheet's cell values, tab-separated (header row must contain Code, Branch, Area Manager)
 //   .json = [{code,branch,area_manager,rom,region,city}]
@@ -49,10 +50,15 @@ const batch = randomUUID();
 const added = rows.filter((r) => !existing.has(r.id)).length, updated = rows.length - added;
 const sql = [
   ...rows.map((r) => `INSERT INTO stores (name,code,username,area_manager,rom,region,city,sync_batch) VALUES (${q(r.branch)},${q(r.id)},${q(r.id)},${q(r.area_manager)},${q(r.rom)},${q(r.region)},${q(r.city)},${q(batch)})
-ON CONFLICT(username) DO UPDATE SET name=excluded.name, code=excluded.code, area_manager=excluded.area_manager, rom=excluded.rom, region=excluded.region, city=excluded.city,
+ON CONFLICT(username) DO UPDATE SET
+  name=CASE WHEN stores.locked=1 THEN stores.name ELSE excluded.name END,
+  area_manager=CASE WHEN stores.locked=1 THEN stores.area_manager ELSE excluded.area_manager END,
+  rom=CASE WHEN stores.locked=1 THEN stores.rom ELSE excluded.rom END,
+  region=CASE WHEN stores.locked=1 THEN stores.region ELSE excluded.region END,
+  city=CASE WHEN stores.locked=1 THEN stores.city ELSE excluded.city END,
   active=CASE WHEN stores.sync_disabled=1 THEN 1 ELSE stores.active END, sync_disabled=0, sync_batch=excluded.sync_batch;`),
   // stores that were synced before but are no longer in the file are disabled (history is kept)
-  `UPDATE stores SET active=0, sync_disabled=1 WHERE sync_batch IS NOT NULL AND sync_batch<>${q(batch)} AND active=1;`,
+  `UPDATE stores SET active=0, sync_disabled=1 WHERE sync_batch IS NOT NULL AND sync_batch<>${q(batch)} AND active=1 AND manual=0;`,
   `INSERT INTO sync_log (source,total,added,updated,disabled) VALUES ('AM & ROM Mapping',${rows.length},${added},${updated},(SELECT COUNT(*) FROM stores WHERE sync_disabled=1));`,
 ].join("\n");
 

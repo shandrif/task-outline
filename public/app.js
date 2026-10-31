@@ -144,9 +144,11 @@ function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, r
 // ---------- shell ----------
 let session = { role: null };
 const logo = () => h("img", { src: "/logo.png", alt: "½M" });
+const fmtDateTime = (s) => (s ? new Date(s.replace(" ", "T") + "Z").toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : "—");
+const daysSince = (s) => (s ? Math.floor((Date.now() - new Date(s.replace(" ", "T") + "Z")) / 864e5) : null);
 
 // ---- liquid navbar (React island, loaded after first paint; plain links are the fallback) ----
-const NAV_KEYS = { "#/admin": "dashboard", "#/admin/evals": "evaluations", "#/admin/questions": "questions", "#/admin/stores": "stores", "#/": "mine", "#/new": "add" };
+const NAV_KEYS = { "#/admin": "dashboard", "#/admin/trainers": "trainers", "#/admin/visits": "visits", "#/admin/stores": "stores", "#/admin/questions": "questions", "#/": "visits", "#/visit/new": "add" };
 let navHost = null, navApi = null, navRole = null, navLinks = [];
 function syncNav(links, activeIdx) {
   navLinks = links;
@@ -164,15 +166,16 @@ function syncNav(links, activeIdx) {
 function shell(content, active) {
   const admin = session.role === "admin";
   const links = admin
-    ? [["#/admin", "Dashboard"], ["#/admin/evals", "Evaluations"], ["#/admin/questions", "Questions"], ["#/admin/stores", "Stores"]]
-    : [["#/", "My evaluations"], ["#/new", "New evaluation"]];
+    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
+    : [["#/", "My visits"], ["#/visit/new", "New visit"]];
   const idx = Math.max(0, links.findIndex(([href]) => href === active));
   return h("div", {},
     h("header", { class: "top no-print" }, h("div", { class: "top-in" },
       h("a", { class: "brand", href: admin ? "#/admin" : "#/" }, logo(), h("div", {}, h("b", {}, "Staff Knowledge", h("br"), "Evaluation"), h("i"))),
       h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))),
       syncNav(links, idx),
-      h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.store.name), h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; navHost = null; navApi = null; document.body.classList.remove("nav-live"); location.hash = ""; render(); } }, "Sign out")))),
+      h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.trainer.name), !admin && h("div", { class: "small muted" }, session.trainer.designation),
+        h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; navHost = null; navApi = null; document.body.classList.remove("nav-live"); cache.clear(); location.hash = ""; render(); } }, "Sign out")))),
     h("main", {}, content));
 }
 
@@ -180,75 +183,196 @@ function pageHead(title, sub, ...right) {
   return h("div", { class: "page-head" }, h("div", {}, h("h1", {}, title), sub && h("p", {}, sub), h("div", { class: "tan-bar" })), h("div", { class: "row no-print" }, right));
 }
 
-// ---------- login ----------
-function loginView() {
-  const err = h("div", { class: "err hidden" });
-  const user = h("input", { type: "text", autocomplete: "username", autocapitalize: "none", required: true });
-  const pass = h("input", { type: "password", autocomplete: "current-password", required: true });
-  const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Sign in");
-  const form = h("form", { class: "stack", onsubmit: async (e) => {
-    e.preventDefault(); btn.disabled = true; err.classList.add("hidden");
-    try {
-      await api("/login", { method: "POST", body: { username: user.value.trim(), password: pass.value } });
-      session = await api("/me"); location.hash = session.role === "admin" ? "#/admin" : "#/"; render();
-    } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
-  } },
-    h("div", { class: "field" }, h("label", {}, "Username"), user),
-    h("div", { class: "field" }, h("label", {}, "Password"), pass), err, btn);
-  return h("div", { class: "login" }, h("div", { class: "card login-card" },
-    h("img", { class: "logo", src: "/logo.png", alt: "½M" }),
-    h("h1", {}, "Staff Knowledge Evaluation"), h("div", { class: "tan-bar" }),
-    h("p", { class: "muted" }, "Sign in with the login provided for your store."), form));
+// ---------- sign in / create trainer account ----------
+function loginView(initial = "in", prefill = "", notice = "") {
+  const wrap = h("div", { class: "login" });
+  const card = h("div", { class: "card login-card" });
+  wrap.append(card);
+  const field = (label, input, hint) => h("div", { class: "field" }, h("label", {}, label), input, hint && h("div", { class: "small muted", style: "margin-top:4px" }, hint));
+
+  function signIn() {
+    const err = h("div", { class: "err hidden" });
+    const user = h("input", { type: "text", autocomplete: "username", autocapitalize: "none", required: true, value: prefill, placeholder: "e.g. HM1234" });
+    const pass = h("input", { type: "password", autocomplete: "current-password", required: true });
+    const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Sign in");
+    return h("form", { class: "stack", onsubmit: async (e) => {
+      e.preventDefault(); btn.disabled = true; err.classList.add("hidden");
+      try {
+        await api("/login", { method: "POST", body: { username: user.value.trim(), password: pass.value } });
+        session = await api("/me"); location.hash = session.role === "admin" ? "#/admin" : "#/"; render();
+      } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
+    } }, notice && h("div", { class: "ok" }, notice), field("Employee ID", user), field("Password", pass), err, btn,
+      h("p", { class: "small muted", style: "margin:0" }, "Admin? Sign in with the admin username."));
+  }
+
+  function signUp() {
+    const err = h("div", { class: "err hidden" });
+    const name = h("input", { type: "text", autocomplete: "name", maxlength: 80, required: true });
+    const eid = h("input", { type: "text", autocapitalize: "none", maxlength: 30, required: true, placeholder: "e.g. HM1234" });
+    const des = h("input", { type: "text", maxlength: 60, required: true, list: "designations", placeholder: "e.g. Trainer" });
+    const pw = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
+    const pw2 = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
+    const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Create account");
+    return h("form", { class: "stack", onsubmit: async (e) => {
+      e.preventDefault(); err.classList.add("hidden");
+      if (pw.value !== pw2.value) { err.textContent = "The two passwords don't match"; err.classList.remove("hidden"); return; }
+      btn.disabled = true;
+      try {
+        await api("/signup", { method: "POST", body: { name: name.value, employee_id: eid.value.trim(), designation: des.value, password: pw.value } });
+        card.replaceChildren(...cardBody("in", eid.value.trim(), "Account created. An admin needs to approve it before you can sign in."));
+      } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
+    } },
+      field("Full name", name), field("Employee ID", eid, "You will sign in with this"), field("Designation", des),
+      h("datalist", { id: "designations" }, ["Trainer", "Senior Trainer", "Area Trainer", "Training Manager"].map((d) => h("option", { value: d }))),
+      field("Create a password", pw, "At least 8 characters, with a letter and a number"), field("Confirm password", pw2), err, btn);
+  }
+
+  function cardBody(tab, pre = "", note = "") {
+    prefill = pre || prefill; notice = note;
+    return [
+      h("img", { class: "logo", src: "/logo.png", alt: "½M" }),
+      h("h1", {}, "Staff Knowledge Evaluation"), h("div", { class: "tan-bar" }),
+      h("div", { class: "tabs", style: "margin:16px 0 14px" },
+        h("button", { type: "button", class: "tab" + (tab === "in" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("in")) }, "Sign in"),
+        h("button", { type: "button", class: "tab" + (tab === "up" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("up")) }, "New trainer")),
+      tab === "in" ? signIn() : signUp(),
+    ];
+  }
+  card.replaceChildren(...cardBody(initial));
+  return wrap;
 }
 
-// ---------- store: dashboard ----------
-async function storeHome() {
-  const list = await api("/evals");
-  (window.requestIdleCallback || setTimeout)(() => cachedGet("/positions").catch(() => {}));   // warm the "New evaluation" page
-  const done = list.filter((e) => e.status === "submitted"), drafts = list.filter((e) => e.status === "draft");
-  const avg = pct(done.reduce((n, e) => n + e.score, 0), done.reduce((n, e) => n + e.max_score, 0));
-  const row = (e) => h("tr", { class: "click", onclick: () => (location.hash = `#/eval/${e.id}`) },
-    h("td", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)),
-    h("td", {}, e.position_name), h("td", {}, fmtDate(e.submitted_at || e.created_at)),
-    h("td", {}, e.status === "draft" ? h("span", { class: "chip warn" }, "Draft — continue") : h("span", { class: `pct ${pctClass(pct(e.score, e.max_score))}` }, fmtPct(pct(e.score, e.max_score)))));
-  return shell(h("div", {},
-    pageHead(session.store.name, "Evaluate your team members against the HM task outline.", h("a", { class: "btn teal", href: "#/new" }, "+ New evaluation")),
-    h("div", { class: "grid g3", style: "margin-bottom:16px" },
-      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, done.length), h("div", { class: "l" }, "Completed evaluations")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, drafts.length), h("div", { class: "l" }, "Drafts in progress")),
-      h("div", { class: "kpi tank" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score"))),
-    h("div", { class: "card" }, list.length
-      ? h("div", { class: "table-wrap" }, h("table", {}, h("thead", {}, h("tr", {}, ["Staff", "Position", "Date", "Score"].map((x) => h("th", {}, x)))), h("tbody", {}, list.map(row))))
-      : h("p", { class: "muted" }, "No evaluations yet. Start your first one with “New evaluation”."))), "#/");
-}
+// ---------- trainer: my visits ----------
+const statusChip = (v) => (v.status === "open" ? h("span", { class: "chip warn" }, "Open") : h("span", { class: "chip good" }, "Completed"));
 
-// ---------- store: new evaluation ----------
-async function newEvalView() {
-  const positions = await cachedGet("/positions");
-  let pos = null;
-  const err = h("div", { class: "err hidden" });
-  const name = h("input", { type: "text", maxlength: 100, required: true, placeholder: "e.g. Ahmed Ali" });
-  const code = h("input", { type: "text", maxlength: 40, placeholder: "Optional" });
-  const who = h("input", { type: "text", maxlength: 100, placeholder: "Your name (optional)" });
-  const go = h("button", { class: "btn teal", disabled: true }, "Start evaluation");
-  const cards = positions.map((p) => {
-    const c = h("button", { type: "button", class: "pos-card", onclick: () => { pos = p; cards.forEach((x) => x.classList.toggle("on", x === c)); go.disabled = false; } },
-      h("b", {}, p.name), h("span", {}, `${p.questions} questions · ${p.sections} sections`));
-    return c;
+async function trainerHome() {
+  const visits = await api("/visits");
+  (window.requestIdleCallback || setTimeout)(() => { cachedGet("/positions").catch(() => {}); cachedGet("/stores", 20000).catch(() => {}); });   // warm the next screens
+  const stores = new Set(visits.map((v) => v.store_id)).size;
+  const evals = visits.reduce((n, v) => n + v.evals, 0);
+  const avg = pct(visits.reduce((n, v) => n + v.sum_score, 0), visits.reduce((n, v) => n + v.sum_max, 0));
+  const open = visits.filter((v) => v.status === "open");
+  const g = grid({
+    rows: visits.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null })),
+    searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.area_manager || ""}`,
+    filters: [{ key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, { key: "city", label: "cities" }],
+    sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits yet. Start your first one with “Start store visit”.",
+    cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) },
+      { key: "city", label: "City" }, { key: "evals", label: "Staff evaluated", num: true }, { key: "avg", label: "Average", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip }],
   });
-  const form = h("form", { onsubmit: async (e) => {
+  return shell(h("div", {},
+    pageHead(`Hello, ${session.trainer.name.split(" ")[0]}`, "Visit a store, evaluate the team, and note what needs more training.", h("a", { class: "btn teal", href: "#/visit/new" }, "+ Start store visit")),
+    h("div", { class: "grid g4", style: "margin-bottom:16px" },
+      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, visits.length), h("div", { class: "l" }, "Store visits")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, stores), h("div", { class: "l" }, "Different stores visited")),
+      h("div", { class: "kpi tank" }, h("div", { class: "v" }, evals), h("div", { class: "l" }, "Staff evaluations")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score"))),
+    open.length > 0 && h("div", { class: "card" }, h("h2", {}, "Continue where you left off"),
+      h("div", { class: "grid g3", style: "margin-top:12px" }, open.map((v) => h("a", { class: "pos-card", href: `#/visit/${v.id}`, style: "text-decoration:none;color:inherit" },
+        h("b", {}, v.store_name), h("span", {}, `${v.store_code} · ${v.city || ""} · started ${fmtDateTime(v.started_at)}`))))),
+    h("div", { class: "card" }, h("h2", {}, "My visits"), g.el)), "#/");
+}
+
+// ---------- trainer: start a visit (store picker) ----------
+async function newVisitView() {
+  const stores = await cachedGet("/stores", 20000);
+  const input = h("input", { type: "search", class: "pick-search", placeholder: "Search store name, ID, city or area manager…", autocomplete: "off", "aria-label": "Search stores" });
+  const list = h("div", { class: "pick-list" });
+  let busy = false;
+  const start = async (s) => {
+    if (busy) return; busy = true;
+    try { const r = await api("/visits", { method: "POST", body: { store_id: s.id } }); cache.delete("/stores"); if (r.existing) toast("Continuing your open visit to this store"); location.hash = `#/visit/${r.id}`; }
+    catch (e) { toast(e.message); busy = false; }
+  };
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    const hits = stores.filter((s) => !q || `${s.code} ${s.name} ${s.city || ""} ${s.region || ""} ${s.area_manager || ""} ${s.rom || ""}`.toLowerCase().includes(q));
+    list.replaceChildren(...[...hits.slice(0, 60).map((s) => h("button", { type: "button", class: "pick", onclick: () => start(s) },
+      h("div", {}, h("b", {}, s.name), h("div", { class: "small muted" }, [s.code, s.city, s.area_manager].filter(Boolean).join(" · "))),
+      s.my_visits ? h("span", { class: "chip" }, `Visited ${s.my_visits}× · last ${fmtDate(s.my_last_visit)}`) : h("span", { class: "chip warn" }, "Not visited yet"))),
+      hits.length > 60 && h("p", { class: "muted small", style: "padding:10px" }, `Showing 60 of ${hits.length}. Type more to narrow down.`),
+      !hits.length && h("p", { class: "muted", style: "padding:10px" }, "No store matches. Ask the admin to add it.")].filter(Boolean));
+  };
+  input.addEventListener("input", draw); draw();
+  const view = shell(h("div", {}, pageHead("Start store visit", "Which store are you visiting?"), h("div", { class: "card" }, input, list)), "#/visit/new");
+  setTimeout(() => input.focus(), 50);
+  return view;
+}
+
+// ---------- visit page (trainer works here; admin can view) ----------
+async function visitView(id) {
+  const [{ visit: v, evaluations, staff }, positions] = await Promise.all([api(`/visits/${id}`), cachedGet("/positions")]);
+  const isTrainer = session.role === "trainer", open = v.status === "open", canWork = isTrainer && open;
+  const submitted = evaluations.filter((e) => e.status === "submitted");
+  const avg = pct(v.sum_score, v.sum_max);
+  const back = isTrainer ? "#/" : "#/admin/visits";
+
+  // --- add a staff member (open visit only) ---
+  let pos = null;
+  const name = h("input", { type: "text", maxlength: 100, required: true, placeholder: "Staff name", list: "staff-names", autocomplete: "off" });
+  const code = h("input", { type: "text", maxlength: 40, placeholder: "Optional" });
+  const go = h("button", { class: "btn teal", disabled: true }, "Start evaluation");
+  const err = h("div", { class: "err hidden" });
+  const cards = positions.map((p) => {
+    const c = h("button", { type: "button", class: "pos-card", onclick: () => select(p) }, h("b", {}, p.name), h("span", {}, `${p.questions} questions`));
+    c.pid = p.id; return c;
+  });
+  const select = (p) => { pos = p; cards.forEach((x) => x.classList.toggle("on", x.pid === p.id)); go.disabled = !name.value.trim(); };
+  name.addEventListener("input", () => {
+    go.disabled = !pos || !name.value.trim();
+    const known = staff.find((s) => s.name.toLowerCase() === name.value.trim().toLowerCase());
+    if (known) { if (!code.value && known.code) code.value = known.code; const p = positions.find((x) => x.id === known.position_id); if (p && !pos) select(p); }
+  });
+  const addForm = h("form", { onsubmit: async (e) => {
     e.preventDefault(); err.classList.add("hidden"); go.disabled = true;
-    try {
-      const r = await api("/evals", { method: "POST", body: { position_id: pos.id, staff_name: name.value, staff_code: code.value, evaluator: who.value } });
-      location.hash = `#/eval/${r.id}`;
-    } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); go.disabled = false; }
+    try { const r = await api("/evals", { method: "POST", body: { visit_id: v.id, position_id: pos.id, staff_name: name.value, staff_code: code.value } }); location.hash = `#/eval/${r.id}`; }
+    catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); go.disabled = false; }
   } },
-    h("div", { class: "card" }, h("h2", {}, "1. Choose the position"), h("div", { class: "grid g3", style: "margin-top:14px" }, cards)),
-    h("div", { class: "card" }, h("h2", {}, "2. Who are you evaluating?"),
-      h("div", { class: "grid g3", style: "margin-top:14px" },
-        h("div", {}, h("label", {}, "Staff name *"), name), h("div", {}, h("label", {}, "Staff ID"), code), h("div", {}, h("label", {}, "Evaluator"), who))),
-    h("div", { class: "stack", style: "margin-top:16px" }, err, go));
-  return shell(h("div", {}, pageHead("New evaluation", "Pick the position and the team member."), form), "#/new");
+    h("datalist", { id: "staff-names" }, [...new Set(staff.map((s) => s.name))].map((n) => h("option", { value: n }))),
+    h("div", { class: "grid g3" }, h("div", {}, h("label", {}, "Staff name *"), name), h("div", {}, h("label", {}, "Staff ID"), code)),
+    h("label", { style: "margin-top:14px" }, "Position (designation) *"), h("div", { class: "grid g3" }, cards),
+    h("div", { class: "stack", style: "margin-top:14px" }, err, go));
+
+  // --- notes + follow-up ---
+  const notes = h("textarea", { rows: 4, maxlength: 3000, placeholder: "Overall notes for this visit: what you saw, what training is needed, who to follow up with…", value: v.notes || "", disabled: !isTrainer });
+  const fu = h("input", { type: "checkbox", checked: !!v.follow_up, disabled: !isTrainer });
+  const fuDate = h("input", { type: "date", value: v.follow_up_date || "", disabled: !isTrainer, style: "width:auto" });
+  const saveNotes = async () => { try { await api(`/visits/${v.id}`, { method: "PATCH", body: { notes: notes.value, follow_up: fu.checked, follow_up_date: fuDate.value } }); toast("Saved"); } catch (e) { toast(e.message); } };
+
+  const finish = async () => {
+    if (!(await confirmBox("Finish this visit?", submitted.length ? `${submitted.length} staff evaluation${submitted.length === 1 ? "" : "s"} will be saved with this visit.` : "No staff were evaluated in this visit. It will still count as a visit to this store.", "Finish visit"))) return;
+    try { await api(`/visits/${v.id}/finish`, { method: "POST", body: { notes: notes.value, follow_up: fu.checked, follow_up_date: fuDate.value } }); cache.delete("/stores"); toast("Visit finished"); renderRoute(); }
+    catch (e) { toast(e.message); }
+  };
+  const removeVisit = async () => {
+    if (!(await confirmBox("Delete this visit?", "The visit and all its evaluations will be removed permanently.", "Delete", true))) return;
+    try { await api(`/visits/${v.id}`, { method: "DELETE" }); cache.delete("/stores"); location.hash = back; } catch (e) { toast(e.message); }
+  };
+
+  const rows = h("div", { class: "table-wrap" }, evaluations.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Staff", "Position", "Result", ""].map((x) => h("th", {}, x)))),
+    h("tbody", {}, evaluations.map((e) => h("tr", { class: "click", onclick: () => (location.hash = `#/eval/${e.id}`) },
+      h("td", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)), h("td", {}, e.position_name),
+      h("td", {}, e.status === "draft" ? h("span", { class: "chip warn" }, isTrainer ? "Draft — continue" : "Draft") : avgCell(pct(e.score, e.max_score))),
+      h("td", { style: "text-align:right" }, e.status === "draft" && isTrainer && h("button", { class: "icon del", title: "Delete draft", "aria-label": `Delete draft for ${e.staff_name}`, onclick: async (ev) => { ev.stopPropagation(); if (await confirmBox("Delete this draft?", `${e.staff_name} — all answers so far will be lost.`, "Delete", true)) { await api(`/evals/${e.id}`, { method: "DELETE" }); renderRoute(); } } }, "🗑"))))))
+    : h("p", { class: "muted" }, canWork ? "No staff evaluated yet. Add the first one below." : "No staff evaluated in this visit."));
+
+  return shell(h("div", {},
+    pageHead(v.store_name, `${[v.store_code, v.city, v.area_manager && "AM " + v.area_manager, v.rom && "ROM " + v.rom].filter(Boolean).join(" · ")} — visit by ${v.trainer_name} · ${fmtDateTime(v.started_at)}`,
+      h("a", { class: "btn ghost sm", href: back }, "← Back"), statusChip(v),
+      (isTrainer ? !submitted.length : true) && h("button", { class: "btn danger sm", onclick: removeVisit }, "Delete visit")),
+    h("div", { class: "grid g3", style: "margin-bottom:16px" },
+      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, v.staff || 0), h("div", { class: "l" }, "Staff evaluated")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score in this visit")),
+      h("div", { class: "kpi tank" }, h("div", { class: "v" }, v.drafts || 0), h("div", { class: "l" }, "Unsubmitted evaluations"))),
+    h("div", { class: "card" }, h("h2", {}, "Staff evaluated in this visit"), rows),
+    canWork && h("div", { class: "card" }, h("h2", {}, "Evaluate a staff member"), h("p", { class: "muted small", style: "margin:4px 0 14px" }, "Pick their position — the questions match it. You can evaluate as many people as you need."), addForm),
+    h("div", { class: "card" }, h("h2", {}, "Visit notes"),
+      h("div", { class: "stack", style: "margin-top:10px" }, notes,
+        h("label", { class: "row", style: "font-weight:700" }, fu, "Follow-up needed", fuDate),
+        isTrainer && h("div", { class: "row" }, h("button", { class: "btn ghost sm", onclick: saveNotes }, "Save notes")))),
+    canWork && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "btn teal", onclick: finish }, "Finish visit")),
+    isTrainer && !open && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("a", { class: "btn teal", href: "#/visit/new" }, "Start another visit"))),
+    isTrainer ? "#/" : "#/admin/visits");
 }
 
 // ---------- evaluation: fill-in form ----------
@@ -259,21 +383,24 @@ async function evalForm(ev) {
   let skipDirty = false, timer = null, saving = false;
   const skip = new Set(ev.sections.filter((s) => s.skipped).map((s) => s.id));
   const state = h("span", { class: "savestate", "aria-live": "polite" }, "All changes saved");
+  let notesDirty = false;
+  const notes = h("textarea", { rows: 4, maxlength: 2000, placeholder: "What should this person improve? Which training do they need? (optional, but very useful)", value: ev.improvement_notes || "", oninput: () => { notesDirty = true; schedule(); } });
 
   async function flush() {
-    if (saving || (!dirty.size && !skipDirty)) return;
+    if (saving || (!dirty.size && !skipDirty && !notesDirty)) return;
     saving = true; state.textContent = "Saving…";
     const answers = [...dirty].map(([item_id, a]) => ({ item_id, ...a })); dirty.clear();
     const sendSkip = skipDirty; skipDirty = false;
+    const sendNotes = notesDirty; notesDirty = false;
     try {
-      await api(`/evals/${ev.id}/answers`, { method: "PUT", body: { answers, ...(sendSkip ? { skip: [...skip] } : {}) } });
+      await api(`/evals/${ev.id}/answers`, { method: "PUT", body: { answers, ...(sendSkip ? { skip: [...skip] } : {}), ...(sendNotes ? { improvement_notes: notes.value } : {}) } });
       state.textContent = "All changes saved";
     } catch (e) {
-      answers.forEach((a) => dirty.set(a.item_id, { trained: a.trained, performed: a.performed })); skipDirty ||= sendSkip;
+      answers.forEach((a) => dirty.set(a.item_id, { trained: a.trained, performed: a.performed })); skipDirty ||= sendSkip; notesDirty ||= sendNotes;
       state.textContent = "Not saved — check connection";
     }
     saving = false;
-    if (dirty.size || skipDirty) schedule();
+    if (dirty.size || skipDirty || notesDirty) schedule();
   }
   const schedule = () => { state.textContent = "Saving…"; clearTimeout(timer); timer = setTimeout(flush, 1500); };
 
@@ -373,14 +500,14 @@ async function evalForm(ev) {
     if (!(await confirmBox("Submit evaluation?", "Once submitted, the answers can no longer be changed.", "Submit"))) return;
     clearTimeout(timer); saving = false; await flush();
     submitBtns.forEach((b) => (b.disabled = true));
-    try { await api(`/evals/${ev.id}/submit`, { method: "POST", body: {} }); toast("Evaluation submitted"); renderRoute(); }
+    try { await api(`/evals/${ev.id}/submit`, { method: "POST", body: { improvement_notes: notes.value } }); toast("Evaluation submitted"); renderRoute(); }
     catch (e) { toast(e.message); submitBtns.forEach((b) => (b.disabled = false)); }
   };
   const submitBtns = [h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation"), h("button", { class: "btn teal", onclick: doSubmit }, "Submit evaluation")];
 
   const del = h("button", { class: "btn danger sm", onclick: async () => {
     if (!(await confirmBox("Delete this draft?", "All answers entered so far will be lost.", "Delete", true))) return;
-    await api(`/evals/${ev.id}`, { method: "DELETE" }); location.hash = "#/";
+    await api(`/evals/${ev.id}`, { method: "DELETE" }); location.hash = `#/visit/${ev.visit_id}`;
   } }, "Delete draft");
 
   const bar = h("div", { class: "evbar no-print" },
@@ -395,8 +522,10 @@ async function evalForm(ev) {
 
   window.addEventListener("beforeunload", () => { if (dirty.size) flush(); }, { once: true });
   return shell(h("div", {},
-    pageHead(`Evaluating ${ev.staff_name}`, `${ev.position_name}${ev.staff_code ? " · ID " + ev.staff_code : ""}. Answers save automatically.`, allOpen, del),
-    bar, secEls, h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, submitBtns[1])), "#/");
+    pageHead(`Evaluating ${ev.staff_name}`, `${ev.position_name}${ev.staff_code ? " · ID " + ev.staff_code : ""} · ${ev.store_name}. Answers save automatically.`, h("a", { class: "btn ghost sm", href: `#/visit/${ev.visit_id}` }, "← Visit"), allOpen, del),
+    bar, secEls,
+    h("div", { class: "card no-print" }, h("h2", {}, "Areas for improvement"), h("p", { class: "muted small", style: "margin:4px 0 10px" }, "Note what this person should work on and any training they need. It appears on their result and in the admin reports."), notes),
+    h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, submitBtns[1])), "#/");
 }
 
 // ---------- evaluation: result ----------
@@ -407,22 +536,25 @@ function evalResult(ev) {
   for (const s of secs) for (const q of s.items) if (q.kind === "question") { if (q.performed === 0) gaps.push([s.title, q.text]); if (q.trained === 0) untrained.push([s.title, q.text]); }
   const list = (arr) => arr.length ? h("ul", { class: "gap-list" }, arr.slice(0, 40).map(([s, t]) => h("li", {}, h("b", {}, s + ": "), t.length > 140 ? t.slice(0, 140) + "…" : t)), arr.length > 40 && h("li", { class: "muted" }, `…and ${arr.length - 40} more`)) : h("p", { class: "muted" }, "None 🎉");
   const exportXlsx = () => {
-    const rows = [["Section", "Task", "Received training", "Performed"]];
+    const rows = [["Store", `${ev.store_code} · ${ev.store_name}`], ["Trainer", `${ev.trainer_name || ""} (${ev.trainer_employee_id || ""})`], ["Staff", ev.staff_name], ["Position", ev.position_name], ["Date", ev.submitted_at], [],
+      ["Section", "Task", "Received training", "Performed"]];
     for (const s of ev.sections) { if (s.skipped) { rows.push([s.title, "(not applicable)", "", ""]); continue; } for (const q of s.items) if (q.kind === "question") rows.push([s.title, q.text, q.trained ? "Yes" : "No", q.performed ? "Yes" : "No"]); }
-    rows.push([], ["Overall score", `${score}/${max}`, `${p}%`]);
+    rows.push([], ["Overall score", `${score}/${max}`, `${p}%`], ["Areas for improvement", ev.improvement_notes || ""]);
     download(rows, `evaluation-${ev.staff_name.replace(/\W+/g, "_")}-${ev.id}.xlsx`, "Evaluation");
   };
   const isAdmin = session.role === "admin";
+  const visitHref = `#/visit/${ev.visit_id}`;
   return shell(h("div", {},
-    pageHead(ev.staff_name, `${ev.position_name} · ${ev.store_name} · ${fmtDate(ev.submitted_at)}${ev.evaluator ? " · evaluated by " + ev.evaluator : ""}`,
-      h("button", { class: "btn ghost sm", onclick: () => history.back() }, "← Back"),
+    pageHead(ev.staff_name, `${ev.position_name} · ${ev.store_name} (${ev.store_code}) · ${fmtDate(ev.submitted_at)}${ev.trainer_name ? " · trainer " + ev.trainer_name : ""}`,
+      h("a", { class: "btn ghost sm", href: visitHref }, "← Back to visit"),
       h("button", { class: "btn ghost sm", onclick: () => window.print() }, "Print"),
       h("button", { class: "btn teal sm", onclick: exportXlsx }, "Download Excel"),
-      isAdmin && h("button", { class: "btn danger sm", onclick: async () => { if (await confirmBox("Delete evaluation?", "This permanently removes the evaluation and its answers.", "Delete", true)) { await api(`/evals/${ev.id}`, { method: "DELETE" }); location.hash = "#/admin/evals"; } } }, "Delete")),
+      isAdmin && h("button", { class: "btn danger sm", onclick: async () => { if (await confirmBox("Delete evaluation?", "This permanently removes the evaluation and its answers.", "Delete", true)) { await api(`/evals/${ev.id}`, { method: "DELETE" }); location.hash = visitHref; } } }, "Delete")),
     h("div", { class: "grid g3", style: "margin-bottom:16px" },
       h("div", { class: "kpi tealk" }, h("div", { class: "score-ring" }, fmtPct(p)), h("div", { class: "l" }, `Overall score · ${score}/${max} tasks performed`)),
       h("div", { class: "kpi" }, h("div", { class: "score-ring" }, fmtPct(tp)), h("div", { class: "l" }, `Received training · ${ev.trained_count}/${max}`)),
       h("div", { class: "kpi tank" }, h("div", { class: "score-ring" }, gaps.length), h("div", { class: "l" }, "Tasks not performed correctly"))),
+    ev.improvement_notes && h("div", { class: "card" }, h("h2", {}, "Areas for improvement"), h("p", { style: "white-space:pre-wrap;margin:8px 0 0" }, ev.improvement_notes)),
     h("div", { class: "card" }, h("h2", { style: "margin-bottom:8px" }, "Score by section"),
       ev.sections.map((s) => { const sp = pct(s.score, s.max); return h("div", { class: "secrow" },
         h("b", {}, s.title),
@@ -431,12 +563,37 @@ function evalResult(ev) {
     h("div", { class: "grid g2", style: "margin-top:16px" },
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Needs coaching"), h("p", { class: "muted small" }, "Tasks marked “Performed: No”."), list(gaps)),
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Training gaps"), h("p", { class: "muted small" }, "Tasks marked “Received training: No”."), list(untrained))),
-    ev.notes && h("div", { class: "card" }, h("h3", {}, "Notes"), h("p", {}, ev.notes))), isAdmin ? "#/admin/evals" : "#/");
+    !isAdmin && ev.visit_status === "open" && h("div", { class: "row", style: "justify-content:flex-end;margin-top:16px" }, h("a", { class: "btn teal", href: visitHref }, "Evaluate another staff member"))),
+    isAdmin ? "#/admin/visits" : "#/");
 }
 
 async function evalRoute(id) {
   const ev = await api(`/evals/${id}`);
-  return ev.status === "draft" && session.role === "store" ? evalForm(ev) : ev.status === "draft" ? shell(h("div", { class: "card" }, h("p", {}, "This evaluation is still a draft."), h("a", { class: "btn ghost", href: "#/admin/evals" }, "Back")), "#/admin/evals") : evalResult(ev);
+  if (ev.status === "draft") {
+    if (session.role === "trainer") return evalForm(ev);
+    return shell(h("div", { class: "card" }, h("p", {}, "This evaluation is still a draft."), h("a", { class: "btn ghost", href: `#/visit/${ev.visit_id}` }, "Back to visit")), "#/admin/visits");
+  }
+  return evalResult(ev);
+}
+
+// ---------- admin: shared period filter ----------
+const range = { preset: "all", from: "", to: "" };
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const rq = () => { const p = new URLSearchParams(); if (range.from) p.set("from", range.from); if (range.to) p.set("to", range.to); const s = p.toString(); return s ? "?" + s : ""; };
+function setPreset(p) {
+  const t = new Date(), ago = (n) => { const x = new Date(t); x.setDate(x.getDate() - n); return ymd(x); };
+  range.preset = p;
+  if (p === "all") range.from = range.to = "";
+  else if (p === "today") range.from = range.to = ymd(t);
+  else if (p === "7") { range.from = ago(6); range.to = ymd(t); }
+  else if (p === "30") { range.from = ago(29); range.to = ymd(t); }
+  else if (p === "month") { range.from = ymd(new Date(t.getFullYear(), t.getMonth(), 1)); range.to = ymd(t); }
+}
+function rangeBar() {
+  const sel = h("select", { class: "flt", "aria-label": "Period", onchange: (e) => { if (e.target.value === "custom") range.preset = "custom"; else setPreset(e.target.value); renderRoute(); } },
+    [["all", "All time"], ["today", "Today"], ["7", "Last 7 days"], ["30", "Last 30 days"], ["month", "This month"], ["custom", "Custom range"]].map(([v, l]) => h("option", { value: v, selected: range.preset === v }, l)));
+  const date = (key) => h("input", { type: "date", class: "flt", value: range[key], "aria-label": key === "from" ? "From date" : "To date", onchange: (e) => { range[key] = e.target.value; renderRoute(); } });
+  return h("div", { class: "row range" }, h("span", { class: "small muted" }, "Period"), sel, range.preset === "custom" && [date("from"), h("span", { class: "muted" }, "to"), date("to")]);
 }
 
 // ---------- admin: dashboard ----------
@@ -444,88 +601,210 @@ const MAP_COLS = [
   { key: "area_manager", label: "Area manager" }, { key: "rom", label: "ROM" }, { key: "region", label: "Region" }, { key: "city", label: "City" },
 ];
 const MAP_FILTERS = [{ key: "area_manager", label: "area managers" }, { key: "rom", label: "ROMs" }, { key: "region", label: "regions" }, { key: "city", label: "cities" }];
-const trunc = (s, n = 22) => (s && s.length > n ? s.slice(0, n - 1) + "…" : s || "—");
+const trunc = (s, n = 60) => (s && s.length > n ? s.slice(0, n - 1) + "…" : s || "");
 const avgCell = (a) => (a == null ? h("span", { class: "muted" }, "—") : h("span", { class: `pct ${pctClass(a)}` }, fmtPct(a)));
+const bucket = (s) => { const n = daysSince(s); return n == null ? "5 · Never visited" : n <= 30 ? "1 · Last 30 days" : n <= 60 ? "2 · 31–60 days ago" : n <= 90 ? "3 · 61–90 days ago" : "4 · Over 90 days ago"; };
+const lastVisitCell = (s) => (s ? h("span", {}, fmtDate(s), h("span", { class: "small muted" }, ` · ${daysSince(s)}d ago`)) : h("span", { class: "chip bad" }, "Never"));
+const notesList = (rows, empty) => (rows.length ? rows.map((n) => h("div", { class: "note-row" }, h("div", { class: "small muted" }, `${n.staff_name} · ${n.position} · ${n.store_code} ${n.store_name} · ${n.trainer_name || ""} · ${fmtDate(n.submitted_at)}`),
+  h("a", { href: `#/eval/${n.id}`, style: "text-decoration:none;color:inherit;white-space:pre-wrap" }, trunc(n.improvement_notes, 260)))) : h("p", { class: "muted" }, empty));
 
 async function adminHome() {
-  const d = await api("/admin/summary"), t = d.totals;
-  const bars = (rows) => rows.map((r) => h("div", { class: "secrow" },
+  const d = await api("/admin/summary" + rq()), t = d.totals;
+  const barRows = (rows) => rows.map((r) => h("div", { class: "secrow" },
     h("b", {}, r.name), r.avg_pct == null ? h("span", { class: "muted small" }, "No evaluations yet") : h("div", { class: `bar ${pctClass(r.avg_pct)}` }, h("i", { style: `width:${r.avg_pct}%` })),
     h("span", { class: `pct ${pctClass(r.avg_pct)}` }, fmtPct(r.avg_pct))));
+  const cov = pct(t.stores_visited, t.stores);
   const stores = d.byStore.map((s) => ({ ...s, avg: s.sum_max ? pct(s.sum_score, s.sum_max) : null }));
 
-  // "View by": roll the stores up by area manager / ROM / region / city
+  const trainers = d.byTrainer.filter((x) => x.employee_id !== "LEGACY" ? x.status !== "pending" : x.visits > 0).map((x) => ({ ...x, avg: x.sum_max ? pct(x.sum_score, x.sum_max) : null, coverage: pct(x.stores_visited, t.stores), trainedPct: x.sum_max ? pct(x.sum_trained, x.sum_max) : null }));
+  const trainerGrid = grid({
+    rows: trainers, searchIn: (x) => `${x.name} ${x.employee_id} ${x.designation}`, filters: [{ key: "designation", label: "designations" }], sort: { key: "visits", dir: -1 },
+    onRow: (x) => (location.hash = `#/admin/trainer/${x.id}`), empty: "No trainers yet.",
+    cols: [{ key: "name", label: "Trainer", render: (x) => h("span", {}, h("b", {}, x.name), h("div", { class: "small muted" }, `${x.employee_id} · ${x.designation}`)) },
+      { key: "visits", label: "Visits", num: true }, { key: "stores_visited", label: "Stores visited", num: true },
+      { key: "coverage", label: "Store coverage", num: true, render: (x) => h("span", { title: `${x.stores_visited} of ${t.stores} stores` }, fmtPct(x.coverage)) },
+      { key: "staff_evaluated", label: "Staff evaluated", num: true }, { key: "evaluations", label: "Evaluations", num: true },
+      { key: "avg", label: "Avg score", num: true, render: (x) => avgCell(x.avg) },
+      { key: "last_visit", label: "Last visit", render: (x) => (x.last_visit ? fmtDate(x.last_visit) : "—") }],
+  });
+
+  // roll the stores up by area manager / ROM / region / city
   const groups = { area_manager: "Area manager", rom: "ROM", region: "Region", city: "City" };
   let by = "area_manager";
-  const holder = h("div");
-  const tabs = h("div", { class: "tabs", style: "margin-bottom:12px" });
+  const holder = h("div"), tabs = h("div", { class: "tabs", style: "margin-bottom:12px" });
   const rollup = () => {
     const m = new Map();
-    for (const s of stores) { const k = s[by] || "(none)"; const g = m.get(k) || { name: k, stores: 0, staff: 0, month: 0, evals: 0, sc: 0, mx: 0 }; g.stores++; g.staff += s.total_staff || 0; g.month += s.month_done || 0; g.evals += s.evaluations; g.sc += s.sum_score; g.mx += s.sum_max; m.set(k, g); }
-    return [...m.values()].map((g) => ({ ...g, avg: g.mx ? pct(g.sc, g.mx) : null }));
+    for (const s of stores) { const k = s[by] || "(none)"; const g = m.get(k) || { name: k, stores: 0, visited: 0, visits: 0, evals: 0, sc: 0, mx: 0 }; g.stores++; if (s.visits) g.visited++; g.visits += s.visits; g.evals += s.evaluations; g.sc += s.sum_score; g.mx += s.sum_max; m.set(k, g); }
+    return [...m.values()].map((g) => ({ ...g, coverage: pct(g.visited, g.stores), avg: g.mx ? pct(g.sc, g.mx) : null }));
   };
   const drawBy = () => {
     tabs.replaceChildren(...Object.entries(groups).map(([k, l]) => h("button", { type: "button", class: "tab" + (k === by ? " on" : ""), onclick: () => { by = k; drawBy(); } }, l)));
     holder.replaceChildren(grid({
       rows: rollup(), sort: { key: "name", dir: 1 }, empty: "No data yet.",
       cols: [{ key: "name", label: groups[by], render: (r) => h("b", {}, r.name) }, { key: "stores", label: "Stores", num: true },
-        { key: "month", label: "Evaluated this month", num: true, render: (r) => (r.staff ? `${r.month} / ${r.staff} staff` : r.month) },
-        { key: "evals", label: "All evaluations", num: true }, { key: "avg", label: "Average score", num: true, render: (r) => avgCell(r.avg) }],
+        { key: "visited", label: "Visited", num: true, render: (r) => `${r.visited} / ${r.stores}` }, { key: "coverage", label: "Coverage", num: true, render: (r) => fmtPct(r.coverage) },
+        { key: "visits", label: "Visits", num: true }, { key: "evals", label: "Evaluations", num: true }, { key: "avg", label: "Avg score", num: true, render: (r) => avgCell(r.avg) }],
     }).el);
   };
+  drawBy();
 
   const storeGrid = grid({
-    rows: stores, searchIn: (s) => `${s.username} ${s.name} ${s.area_manager} ${s.rom} ${s.region} ${s.city}`, filters: MAP_FILTERS, sort: { key: "avg", dir: 1 },
-    onRow: (s) => (location.hash = `#/admin/evals?store=${s.id}`), maxHeight: "560px",
+    rows: stores, searchIn: (s) => `${s.username} ${s.name} ${s.area_manager || ""} ${s.rom || ""} ${s.region || ""} ${s.city || ""}`,
+    filters: [{ key: "recency", label: "last-visit periods", get: (s) => bucket(s.last_visit) }, ...MAP_FILTERS], sort: { key: "last_visit", dir: 1 }, maxHeight: "560px",
+    onRow: (s) => (location.hash = `#/admin/visits?store=${encodeURIComponent(s.username)}`),
     cols: [{ key: "username", label: "Store ID", render: (s) => h("b", {}, s.username) }, { key: "name", label: "Store" }, ...MAP_COLS,
-      { key: "month_done", label: "This month", num: true, render: (s) => (s.total_staff ? `${s.month_done}/${s.total_staff}` : s.month_done) },
-      { key: "evaluations", label: "All", num: true }, { key: "avg", label: "Average", num: true, render: (s) => avgCell(s.avg) }],
+      { key: "visits", label: "Visits", num: true }, { key: "evaluations", label: "Evaluations", num: true }, { key: "avg", label: "Avg score", num: true, render: (s) => avgCell(s.avg) },
+      { key: "last_visit", label: "Last visit", render: (s) => lastVisitCell(s.last_visit) }],
   });
-  drawBy();
+
   return shell(h("div", {},
-    pageHead("Dashboard", "How well your teams know the task outline."),
+    pageHead("Dashboard", "Trainer visits to stores, staff evaluated, and where more training is needed.", rangeBar()),
+    t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" },
-      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, fmtPct(t.avg_pct)), h("div", { class: "l" }, "Average score (all evaluations)")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, t.evaluations), h("div", { class: "l" }, `Evaluations completed · ${t.drafts} drafts`)),
-      h("div", { class: "kpi tank" }, h("div", { class: "v" }, `${t.active_stores}/${t.stores}`), h("div", { class: "l" }, "Stores that have evaluated staff")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(t.trained_pct)), h("div", { class: "l" }, "Tasks staff say they were trained on"))),
+      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, t.visits), h("div", { class: "l" }, `Store visits · ${t.trainers} active trainer${t.trainers === 1 ? "" : "s"}`)),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, `${t.stores_visited}/${t.stores}`), h("div", { class: "l" }, `Stores visited · ${fmtPct(cov)} coverage`)),
+      h("div", { class: "kpi tank" }, h("div", { class: "v" }, t.evaluations), h("div", { class: "l" }, `Staff evaluations · ${t.drafts} unsubmitted`)),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(t.avg_pct)), h("div", { class: "l" }, `Average score · ${fmtPct(t.trained_pct)} trained`))),
+    h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
-      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "By position"), bars(d.byPosition)),
-      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Weakest sections"), h("p", { class: "muted small" }, "Lowest “performed” rate across all stores."),
-        d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Needs a few more evaluations."))),
+      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate across all evaluations."),
+        d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Needs a few evaluations.")),
+      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "By position"), barRows(d.byPosition))),
+    h("div", { class: "card" }, h("h2", {}, "Trainers’ notes on areas for improvement"), notesList(d.notes, "No notes in this period.")),
     h("div", { class: "card" }, h("h2", {}, "View by"), tabs, holder),
-    h("div", { class: "card" }, h("h2", {}, "Stores"), h("p", { class: "muted small" }, "Click a column to sort, use the filters to narrow down, click a store to see its evaluations."), storeGrid.el)), "#/admin");
+    h("div", { class: "card" }, h("h2", {}, "Stores — visit coverage"), h("p", { class: "muted small" }, "Sorted by oldest visit first. Filter “Never visited” or “Over 90 days” to see which stores need a trainer."), storeGrid.el)), "#/admin");
 }
 
-// ---------- admin: evaluations ----------
-async function adminEvals(query) {
-  const list = await api("/evals");
-  const fromStore = query.get("store") && list.find((e) => String(e.store_id) === query.get("store"));
-  const exportAll = () => {
-    const rows = [["Store ID", "Store", "Area manager", "ROM", "Region", "City", "Position", "Staff", "Staff ID", "Evaluator", "Submitted", "Score", "Max", "Score %", "Training %"]];
-    g.rows().filter((e) => e.status === "submitted").forEach((e) => rows.push([e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.position_name, e.staff_name, e.staff_code || "", e.evaluator || "", e.submitted_at, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score)]));
-    download(rows, `hm-evaluations-${new Date().toISOString().slice(0, 10)}.xlsx`, "Evaluations");
+// ---------- admin: trainers ----------
+async function adminTrainers() {
+  const list = await api("/admin/trainers");
+  const rows = list.filter((t) => t.employee_id !== "LEGACY" || t.visits > 0).map((t) => ({ ...t, avg: t.sum_max ? pct(t.sum_score, t.sum_max) : null }));
+  const pending = rows.filter((t) => t.status === "pending");
+  const setStatus = guarded(async (t, status) => { await api(`/admin/trainers/${t.id}`, { method: "PATCH", body: { status } }); });
+  const reset = async (t) => {
+    const input = h("input", { type: "text", placeholder: "Leave empty for a random password", maxlength: 60 });
+    const v = await modal(`Reset password — ${t.name}`, h("div", {}, h("p", { class: "muted small" }, `${t.employee_id}. They are signed out everywhere. Share the new password with them privately.`), input),
+      (close) => [h("button", { class: "btn ghost", onclick: () => close(null) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(input.value.trim()) }, "Reset")]);
+    if (v === null) return;
+    try {
+      const r = await api(`/admin/trainers/${t.id}/reset-password`, { method: "POST", body: v ? { password: v } : {} });
+      await modal("New password", h("div", {}, h("p", {}, `${t.name} (${t.employee_id})`), h("p", { class: "mono", style: "font-size:20px;font-weight:700" }, r.password), h("p", { class: "muted small" }, "Shown once — copy it now.")),
+        (close) => [h("button", { class: "btn ghost", onclick: () => { navigator.clipboard?.writeText(r.password); toast("Copied"); } }, "Copy"), h("button", { class: "btn teal", onclick: () => close(true) }, "Done")]);
+    } catch (e) { toast(e.message); }
   };
-  const data = list.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, when: e.submitted_at || e.created_at }));
+  const edit = guarded(async (t) => {
+    const name = h("input", { type: "text", value: t.name, maxlength: 80 }), des = h("input", { type: "text", value: t.designation, maxlength: 60 }), eid = h("input", { type: "text", value: t.employee_id, maxlength: 30 });
+    const ok = await modal(`Edit ${t.name}`, h("div", { class: "stack" }, h("div", {}, h("label", {}, "Name"), name), h("div", {}, h("label", {}, "Employee ID"), eid), h("div", {}, h("label", {}, "Designation"), des)),
+      (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(true) }, "Save")]);
+    if (!ok) throw new Error("Cancelled");
+    await api(`/admin/trainers/${t.id}`, { method: "PATCH", body: { name: name.value, designation: des.value, employee_id: eid.value } });
+  });
+  const remove = guarded(async (t) => {
+    if (!(await confirmBox("Delete trainer?", `${t.name} will be removed. Trainers with visits can only be disabled.`, "Delete", true))) throw new Error("Cancelled");
+    await api(`/admin/trainers/${t.id}`, { method: "DELETE" });
+  });
+  const stChip = (t) => (t.status === "approved" ? h("span", { class: "chip good" }, "Active") : t.status === "pending" ? h("span", { class: "chip warn" }, "Pending") : h("span", { class: "chip bad" }, "Disabled"));
+  const g = grid({
+    rows, searchIn: (t) => `${t.name} ${t.employee_id} ${t.designation}`, filters: [{ key: "status", label: "statuses", show: (v) => ({ approved: "Active", pending: "Pending", disabled: "Disabled" })[v] }, { key: "designation", label: "designations" }],
+    sort: { key: "name", dir: 1 }, onRow: (t) => (location.hash = `#/admin/trainer/${t.id}`), empty: "No trainers yet. They create their own accounts from the sign-in page.",
+    cols: [{ key: "employee_id", label: "Employee ID", render: (t) => h("b", {}, t.employee_id) }, { key: "name", label: "Name" }, { key: "designation", label: "Designation" },
+      { key: "status", label: "Status", render: stChip }, { key: "created_at", label: "Joined", render: (t) => fmtDate(t.created_at) }, { key: "last_login", label: "Last sign-in", render: (t) => (t.last_login ? fmtDate(t.last_login) : "—") },
+      { key: "visits", label: "Visits", num: true }, { key: "stores_visited", label: "Stores", num: true }, { key: "evaluations", label: "Evaluations", num: true }, { key: "avg", label: "Avg score", num: true, render: (t) => avgCell(t.avg) },
+      { key: "actions", label: "", nosort: true, render: (t) => (t.employee_id === "LEGACY" ? "" : h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end", onclick: (e) => e.stopPropagation() },
+        t.status !== "approved" && h("button", { class: "btn teal sm", onclick: () => setStatus(t, "approved") }, t.status === "pending" ? "Approve" : "Enable"),
+        t.status === "approved" && h("button", { class: "btn ghost sm", onclick: () => setStatus(t, "disabled") }, "Disable"),
+        h("button", { class: "btn ghost sm", onclick: () => reset(t) }, "🔑 Reset"), h("button", { class: "btn ghost sm", onclick: () => edit(t) }, "Edit"),
+        h("button", { class: "icon del", title: "Delete trainer", "aria-label": `Delete ${t.name}`, onclick: () => remove(t) }, "🗑"))) }],
+  });
+  return shell(h("div", {},
+    pageHead("Trainers", "Trainers create their own account (name, employee ID, designation, password). You approve them here."),
+    pending.length > 0 && h("div", { class: "card" }, h("h2", {}, `Waiting for approval (${pending.length})`),
+      h("div", { class: "stack", style: "margin-top:10px" }, pending.map((t) => h("div", { class: "row spread pending-row" },
+        h("div", {}, h("b", {}, t.name), h("div", { class: "small muted" }, `${t.employee_id} · ${t.designation} · requested ${fmtDate(t.created_at)}`)),
+        h("div", { class: "row" }, h("button", { class: "btn teal sm", onclick: () => setStatus(t, "approved") }, "Approve"), h("button", { class: "btn danger sm", onclick: () => setStatus(t, "disabled") }, "Reject")))))),
+    h("div", { class: "card" }, g.el)), "#/admin/trainers");
+}
+
+// ---------- admin: one trainer ----------
+async function adminTrainer(id) {
+  const d = await api(`/admin/trainers/${id}` + rq()), t = d.trainer;
+  const total = (await api("/admin/summary" + rq())).totals.stores;
+  const avg = t.sum_max ? pct(t.sum_score, t.sum_max) : null, trained = t.sum_max ? pct(t.sum_trained, t.sum_max) : null;
+  const visits = d.visits.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }));
+  const g = grid({
+    rows: visits, searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.notes || ""}`, filters: [{ key: "city", label: "cities" }, { key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }],
+    sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits in this period.",
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Avg score %", "Status", "Follow-up", "Notes"], ...g.rows().map((v) => [v.started_at, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.avg, v.status, v.follow_up ? "Yes" : "", v.notes || ""])], `visits-${t.employee_id}.xlsx`, "Visits") }, "Export to Excel")],
+    cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) }, ...MAP_COLS.slice(0, 1), { key: "city", label: "City" },
+      { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Avg score", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip },
+      { key: "follow_up", label: "Follow-up", render: (v) => (v.follow_up ? h("span", { class: "chip warn" }, v.follow_up_date ? fmtDate(v.follow_up_date) : "Yes") : "") }, { key: "notes", label: "Notes", render: (v) => h("span", { class: "small" }, trunc(v.notes, 80)) }],
+  });
+  return shell(h("div", {},
+    pageHead(t.name, `${t.employee_id} · ${t.designation} · ${t.status === "approved" ? "Active" : t.status}`, rangeBar(), h("a", { class: "btn ghost sm", href: "#/admin/trainers" }, "← Trainers")),
+    h("div", { class: "grid g4", style: "margin-bottom:16px" },
+      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, t.visits), h("div", { class: "l" }, "Store visits")),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, `${t.stores_visited}`), h("div", { class: "l" }, `Stores visited · ${fmtPct(pct(t.stores_visited, total))} of all stores`)),
+      h("div", { class: "kpi tank" }, h("div", { class: "v" }, t.staff_evaluated), h("div", { class: "l" }, `Staff evaluated · ${t.evaluations} evaluations`)),
+      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, `Average score · ${fmtPct(trained)} trained`))),
+    h("div", { class: "grid g2" },
+      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Weakest areas found"), h("p", { class: "muted small" }, "Lowest “performed” rate in this trainer’s evaluations."),
+        d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Not enough evaluations yet.")),
+      h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Notes on areas for improvement"), notesList(d.notes, "No notes in this period."))),
+    h("div", { class: "card" }, h("h2", {}, "Visits"), g.el)), "#/admin/trainers");
+}
+
+// ---------- admin: visits + staff evaluations ----------
+let visitsTab = "visits";
+async function adminVisits(query) {
+  const [visitList, evalList] = await Promise.all([api("/visits" + rq()), api("/evals" + rq())]);
+  const fromStore = query.get("store");
+  const visits = visitList.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }));
+  const removeVisit = async (v) => {
+    if (!(await confirmBox("Delete visit?", `${v.trainer_name} at ${v.store_name} on ${fmtDate(v.started_at)} — including ${v.evals + v.drafts} evaluation(s). This cannot be undone.`, "Delete", true))) return;
+    try { await api(`/visits/${v.id}`, { method: "DELETE" }); visits.splice(visits.indexOf(v), 1); vg.setRows(visits); toast("Visit deleted"); } catch (e) { toast(e.message); }
+  };
+  const vg = grid({
+    rows: visits, searchIn: (v) => `${v.trainer_name} ${v.trainer_employee_id} ${v.store_code} ${v.store_name} ${v.area_manager || ""} ${v.rom || ""} ${v.city || ""} ${v.notes || ""}`,
+    filters: [{ key: "trainer_name", label: "trainers" }, { key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, ...MAP_FILTERS, { key: "store", label: "stores" }],
+    initial: fromStore ? { store: visits.find((v) => v.store_code === fromStore)?.store } : {},
+    sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits in this period.",
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Trainer", "Employee ID", "Designation", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Evaluations", "Avg score %", "Status", "Follow-up", "Follow-up date", "Notes"],
+      ...vg.rows().map((v) => [v.started_at, v.trainer_name, v.trainer_employee_id, v.trainer_designation, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.evals, v.avg, v.status, v.follow_up ? "Yes" : "", v.follow_up_date || "", v.notes || ""])], `hm-visits-${ymd(new Date())}.xlsx`, "Visits") }, "Export to Excel")],
+    cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "trainer_name", label: "Trainer", render: (v) => h("span", {}, h("b", {}, v.trainer_name), h("div", { class: "small muted" }, v.trainer_employee_id)) },
+      { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) }, ...MAP_COLS,
+      { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Avg score", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip },
+      { key: "follow_up", label: "Follow-up", render: (v) => (v.follow_up ? h("span", { class: "chip warn" }, v.follow_up_date ? fmtDate(v.follow_up_date) : "Yes") : "") },
+      { key: "notes", label: "Notes", render: (v) => h("span", { class: "small" }, trunc(v.notes, 70)) },
+      { key: "del", label: "", nosort: true, render: (v) => h("button", { class: "icon del", title: "Delete visit", "aria-label": `Delete visit to ${v.store_name}`, onclick: (e) => { e.stopPropagation(); removeVisit(v); } }, "🗑") }],
+  });
+
+  const evals = evalList.map((e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, trainedPct: e.status === "submitted" ? pct(e.trained_count, e.max_score) : null, when: e.submitted_at || e.created_at }));
   const removeEval = async (e) => {
     if (!(await confirmBox("Delete evaluation?", `${e.staff_name} · ${e.position_name} · ${e.store_code}. This permanently removes the evaluation and its answers.`, "Delete", true))) return;
-    try { await api(`/evals/${e.id}`, { method: "DELETE" }); data.splice(data.indexOf(e), 1); g.setRows(data); toast("Evaluation deleted"); } catch (ex) { toast(ex.message); }
+    try { await api(`/evals/${e.id}`, { method: "DELETE" }); evals.splice(evals.indexOf(e), 1); eg.setRows(evals); toast("Evaluation deleted"); } catch (ex) { toast(ex.message); }
   };
-  const g = grid({
-    rows: data,
-    searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.store_code} ${e.store_name} ${e.area_manager} ${e.rom}`,
-    filters: [{ key: "status", label: "statuses", show: (v) => (v === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
-    initial: { status: "submitted", ...(fromStore ? { store: `${fromStore.store_code} · ${fromStore.store_name}` } : {}) },
-    sort: { key: "when", dir: -1 }, onRow: (e) => (location.hash = `#/eval/${e.id}`), empty: "No evaluations match.",
-    toolbar: [h("button", { class: "btn teal sm", onclick: exportAll }, "Export to Excel")],
-    cols: [{ key: "staff_name", label: "Staff", render: (e) => h("span", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)) },
-      { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, { key: "position_name", label: "Position" }, ...MAP_COLS,
-      { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
+  const eg = grid({
+    rows: evals, searchIn: (e) => `${e.staff_name} ${e.staff_code || ""} ${e.trainer_name || ""} ${e.store_code} ${e.store_name} ${e.area_manager || ""} ${e.rom || ""} ${e.city || ""} ${e.improvement_notes || ""}`,
+    filters: [{ key: "status", label: "statuses", show: (x) => (x === "draft" ? "Drafts" : "Submitted") }, { key: "position_name", label: "positions" }, { key: "trainer_name", label: "trainers" }, ...MAP_FILTERS, { key: "store", label: "stores" }],
+    initial: { status: "submitted" }, sort: { key: "when", dir: -1 }, onRow: (e) => (location.hash = `#/eval/${e.id}`), empty: "No evaluations match.",
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Trainer", "Employee ID", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff", "Staff ID", "Position", "Score", "Max", "Score %", "Training %", "Areas for improvement"],
+      ...eg.rows().filter((e) => e.status === "submitted").map((e) => [e.submitted_at, e.trainer_name, e.trainer_employee_id, e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.staff_name, e.staff_code || "", e.position_name, e.score, e.max_score, e.pctv, e.trainedPct, e.improvement_notes || ""])], `hm-evaluations-${ymd(new Date())}.xlsx`, "Evaluations") }, "Export to Excel")],
+    cols: [{ key: "staff_name", label: "Staff", render: (e) => h("span", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)) }, { key: "position_name", label: "Position" },
+      { key: "trainer_name", label: "Trainer" }, { key: "store", label: "Store", render: (e) => h("span", {}, h("b", {}, e.store_code), " ", e.store_name) }, ...MAP_COLS, { key: "when", label: "Date", render: (e) => fmtDate(e.when) },
       { key: "pctv", label: "Score", num: true, render: (e) => (e.status === "draft" ? h("span", { class: "chip warn" }, "Draft") : avgCell(e.pctv)) },
-      { key: "trainpct", label: "Training", num: true, get: (e) => (e.status === "submitted" ? pct(e.trained_count, e.max_score) : null), render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(pct(e.trained_count, e.max_score)) : "") },
+      { key: "trainedPct", label: "Training", num: true, render: (e) => h("span", { class: "muted" }, e.status === "submitted" ? fmtPct(e.trainedPct) : "") },
+      { key: "improvement_notes", label: "Areas for improvement", render: (e) => h("span", { class: "small" }, trunc(e.improvement_notes, 70)) },
       { key: "del", label: "", nosort: true, render: (e) => h("button", { class: "icon del", title: "Delete evaluation", "aria-label": `Delete evaluation of ${e.staff_name}`, onclick: (ev) => { ev.stopPropagation(); removeEval(e); } }, "🗑") }],
   });
-  return shell(h("div", {}, pageHead("Evaluations", "Every evaluation submitted by the stores — sort and filter by store, area manager, ROM, region or city."), h("div", { class: "card" }, g.el)), "#/admin/evals");
+
+  const holder = h("div"), tabBar = h("div", { class: "tabs", style: "margin-bottom:12px" });
+  const draw = () => {
+    tabBar.replaceChildren(h("button", { type: "button", class: "tab" + (visitsTab === "visits" ? " on" : ""), onclick: () => { visitsTab = "visits"; draw(); } }, `Visits (${visits.length})`),
+      h("button", { type: "button", class: "tab" + (visitsTab === "evals" ? " on" : ""), onclick: () => { visitsTab = "evals"; draw(); } }, `Staff evaluations (${evals.length})`));
+    holder.replaceChildren(visitsTab === "visits" ? vg.el : eg.el);
+  };
+  draw();
+  return shell(h("div", {}, pageHead("Visits", "Every store visit by every trainer — sort and filter by trainer, store, area manager, ROM, region or city.", rangeBar()), h("div", { class: "card" }, tabBar, holder)), "#/admin/visits");
 }
 
 // ---------- admin: questions ----------
@@ -597,66 +876,49 @@ function addPositionBox() {
 async function adminStores() {
   const loaded = await api("/admin/stores");
   const stores = loaded.stores;
-  let passwords = null, show = false;
-  const loginUrl = location.origin;
-  const copy = (text, what = "Copied") => navigator.clipboard?.writeText(text).then(() => toast(what), () => toast("Copy failed"));
+  const refresh = async () => { const y = scrollY; stores.splice(0, stores.length, ...(await api("/admin/stores")).stores); cache.delete("/stores"); g.setRows(stores); scrollTo(0, y); };
 
-  const showBtn = h("button", { class: "btn ghost sm", onclick: async () => {
-    show = !show;
-    if (show && !passwords) { try { passwords = await api("/admin/stores/passwords"); } catch (e) { show = false; return toast(e.message); } }
-    showBtn.textContent = show ? "🙈 Hide passwords" : "👁 Show passwords"; g.redraw();
-  } }, "👁 Show passwords");
-
-  const refresh = async () => { const y = scrollY; const r = await api("/admin/stores"); stores.splice(0, stores.length, ...r.stores); if (show) passwords = await api("/admin/stores/passwords"); g.setRows(stores); scrollTo(0, y); };
-
-  async function resetPw(s) {
-    const input = h("input", { type: "text", placeholder: "Leave empty for a random password", maxlength: 40 });
-    const v = await modal(`Reset password — ${s.username}`, h("div", {}, h("p", { class: "muted small" }, `${s.name}. Anyone signed in with the old password is signed out.`), input),
-      (close) => [h("button", { class: "btn ghost", onclick: () => close(null) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(input.value.trim() || "") }, "Reset")]);
-    if (v === null) return;
-    try {
-      const r = await api(`/admin/stores/${s.id}/reset-password`, { method: "POST", body: v ? { password: v } : {} });
-      passwords = { ...(passwords || (await api("/admin/stores/passwords"))), [s.id]: r.password };
-      toast(`New password for ${s.username}: ${r.password}`);
-      if (!show) showBtn.click(); else g.redraw();
-    } catch (e) { toast(e.message); }
-  }
-
-  const credRows = (rows) => [["Store ID", "Store", "Password", "Area manager", "ROM", "Region", "City", "Total staff", "Login URL"],
-    ...rows.map((s) => [s.username, s.name, passwords?.[s.id] ?? "", s.area_manager, s.rom, s.region, s.city, s.total_staff ?? "", loginUrl])];
-  const downloadCreds = async () => {
-    try { passwords = await api("/admin/stores/passwords"); download(credRows(g.rows()), `store-logins-${new Date().toISOString().slice(0, 10)}.xlsx`, "Stores"); }
+  const form = async (s) => {
+    const f = {
+      name: h("input", { type: "text", value: s?.name || "", maxlength: 120, required: true }),
+      code: h("input", { type: "text", value: s?.code || "", maxlength: 40, placeholder: s ? "" : "Leave empty to auto-create" }),
+      area_manager: h("input", { type: "text", value: s?.area_manager || "", maxlength: 80 }),
+      rom: h("input", { type: "text", value: s?.rom || "", maxlength: 80 }),
+      region: h("input", { type: "text", value: s?.region || "", maxlength: 80 }),
+      city: h("input", { type: "text", value: s?.city || "", maxlength: 80 }),
+    };
+    const field = (label, el) => h("div", {}, h("label", {}, label), el);
+    const ok = await modal(s ? `Edit store — ${s.name}` : "Add a store", h("div", { class: "stack" },
+      field("Store name *", f.name), field("Store ID", f.code), h("div", { class: "grid g2" }, field("Area manager", f.area_manager), field("ROM", f.rom)), h("div", { class: "grid g2" }, field("Region", f.region), field("City", f.city)),
+      s && !s.manual && h("p", { class: "small muted", style: "margin:0" }, "Details you change here are kept — the weekly mapping sync will not overwrite them.")),
+      (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(true) }, s ? "Save" : "Add store")]);
+    if (!ok) return;
+    const body = Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value.trim()]));
+    try { if (s) await api(`/admin/stores/${s.id}`, { method: "PATCH", body }); else await api("/admin/stores", { method: "POST", body }); toast(s ? "Store updated" : "Store added"); await refresh(); }
     catch (e) { toast(e.message); }
   };
 
   const g = grid({
-    rows: stores, sort: { key: "username", dir: 1 }, rowClass: (s) => (s.active ? "" : "off"), empty: "No stores yet — the weekly sync fills this list.",
-    searchIn: (s) => `${s.username} ${s.name} ${s.area_manager || ""} ${s.rom || ""} ${s.region || ""} ${s.city || ""}`,
-    filters: [...MAP_FILTERS, { key: "active", label: "statuses", get: (s) => (s.active ? "1" : "0"), show: (v) => (v === "1" ? "Active" : "Disabled") }],
-    toolbar: [showBtn, h("button", { class: "btn teal sm", onclick: downloadCreds }, "Download logins (Excel)")],
+    rows: stores, sort: { key: "name", dir: 1 }, rowClass: (s) => (s.active ? "" : "off"), empty: "No stores yet.",
+    searchIn: (s) => `${s.code} ${s.name} ${s.area_manager || ""} ${s.rom || ""} ${s.region || ""} ${s.city || ""}`,
+    filters: [...MAP_FILTERS, { key: "active", label: "statuses", get: (s) => (s.active ? "1" : "0"), show: (v) => (v === "1" ? "Active" : "Disabled") }, { key: "manual", label: "sources", get: (s) => (s.manual ? "1" : "0"), show: (v) => (v === "1" ? "Added by hand" : "Mapping file") }],
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => form(null) }, "+ Add store")],
     cols: [
-      { key: "username", label: "Store ID", render: (s) => h("b", {}, s.username) },
-      { key: "name", label: "Store", render: (s) => h("span", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled")) },
+      { key: "code", label: "Store ID", render: (s) => h("b", {}, s.code) },
+      { key: "name", label: "Store", render: (s) => h("span", {}, s.name, !s.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled"), s.manual && h("span", { class: "chip", style: "margin-left:8px" }, "Added by hand")) },
       ...MAP_COLS,
-      { key: "pw", label: "Password", nosort: true, cls: "mono", render: (s) => { const pw = passwords?.[s.id]; return show ? (pw ? h("button", { class: "pwcell", title: "Click to copy", onclick: () => copy(pw, `Password for ${s.username} copied`) }, pw) : h("span", { class: "muted" }, "—")) : "••••••"; } },
-      { key: "total_staff", label: "Total staff", num: true, render: (s) => h("input", { type: "text", inputmode: "numeric", value: s.total_staff ?? "", placeholder: "—", style: "width:72px", "aria-label": `Total staff for ${s.name}`,
-        onclick: (e) => e.stopPropagation(),
-        onchange: async (e) => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { total_staff: e.target.value.trim() } }); s.total_staff = e.target.value.trim() === "" ? null : +e.target.value; toast("Saved"); } catch (ex) { toast(ex.message); e.target.value = s.total_staff ?? ""; } } }) },
-      { key: "month_done", label: "This month", num: true, render: (s) => (s.total_staff ? h("span", { class: `pct ${pctClass(pct(s.month_done, s.total_staff))}` }, `${s.month_done}/${s.total_staff}`) : h("span", { class: "muted" }, s.month_done)) },
+      { key: "visits", label: "Visits", num: true }, { key: "evaluations", label: "Evaluations", num: true }, { key: "last_visit", label: "Last visit", render: (s) => lastVisitCell(s.last_visit) },
       { key: "actions", label: "", nosort: true, render: (s) => h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
-        h("button", { class: "btn ghost sm", onclick: () => resetPw(s) }, "🔑 Reset"),
+        h("button", { class: "btn ghost sm", onclick: () => form(s) }, "Edit"),
         h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/stores/${s.id}`, { method: "PATCH", body: { active: !s.active } }); await refresh(); } catch (e) { toast(e.message); } } }, s.active ? "Disable" : "Enable"),
-        h("button", { class: "icon del", title: "Delete store", "aria-label": `Delete ${s.name}`, onclick: async () => { if (!(await confirmBox("Delete store?", `${s.username} · ${s.name} will be removed. Stores with evaluations can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); await refresh(); } catch (e) { toast(e.message); } } }, "🗑")) },
+        h("button", { class: "icon del", title: "Delete store", "aria-label": `Delete ${s.name}`, onclick: async () => { if (!(await confirmBox("Delete store?", `${s.code} · ${s.name} will be removed. Stores with visits can only be disabled.`, "Delete", true))) return; try { await api(`/admin/stores/${s.id}`, { method: "DELETE" }); await refresh(); } catch (e) { toast(e.message); } } }, "🗑")) },
     ],
   });
-
   const ls = loaded.lastSync;
   return shell(h("div", {},
-    pageHead("Stores", "Stores, area managers, ROMs, regions and cities come from the AM & ROM Mapping file. The Store ID is the login; you control every password."),
+    pageHead("Stores", "The list trainers pick from when they start a visit. Add, rename or disable any store."),
     h("div", { class: "card" },
-      h("div", { class: "row spread small muted", style: "margin-bottom:12px" },
-        h("span", {}, ls ? `Synced weekly from “AM & ROM Mapping” · last sync ${fmtDate(ls.at)} · ${ls.total} stores` : "Waiting for the first sync from “AM & ROM Mapping”."),
-        h("span", { class: "row" }, `Sign-in page: ${loginUrl}`, h("button", { class: "btn ghost sm", onclick: () => copy(loginUrl, "Link copied") }, "Copy"))),
+      h("p", { class: "small muted", style: "margin:0 0 12px" }, ls ? `Area manager, ROM, region and city refresh weekly from “AM & ROM Mapping” · last sync ${fmtDate(ls.at)} · ${ls.total} stores. Stores you edit or add by hand are never overwritten.` : "Waiting for the first sync from “AM & ROM Mapping”."),
       g.el)), "#/admin/stores");
 }
 
@@ -672,19 +934,23 @@ async function renderRouteInner() {
   try {
     if (session.role === "admin") {
       if (path === "/admin" || path === "/") view = await adminHome();
-      else if (path === "/admin/evals") view = await adminEvals(query);
+      else if (path === "/admin/trainers") view = await adminTrainers();
+      else if ((m = path.match(/^\/admin\/trainer\/(\d+)$/))) view = await adminTrainer(m[1]);
+      else if (path === "/admin/visits") view = await adminVisits(query);
       else if ((m = path.match(/^\/admin\/questions(?:\/(\d+))?$/))) view = await adminQuestions(m[1]);
       else if (path === "/admin/stores") view = await adminStores();
+      else if ((m = path.match(/^\/visit\/(\d+)$/))) view = await visitView(m[1]);
       else if ((m = path.match(/^\/eval\/(\d+)$/))) view = await evalRoute(m[1]);
       else view = await adminHome();
     } else {
-      if (path === "/new") view = await newEvalView();
+      if (path === "/visit/new") view = await newVisitView();
+      else if ((m = path.match(/^\/visit\/(\d+)$/))) view = await visitView(m[1]);
       else if ((m = path.match(/^\/eval\/(\d+)$/))) view = await evalRoute(m[1]);
-      else view = await storeHome();
+      else view = await trainerHome();
     }
   } catch (e) {
     if (!session.role) return;
-    view = shell(h("div", { class: "card" }, h("h2", {}, "Something went wrong"), h("p", { class: "err" }, e.message), h("a", { class: "btn ghost", href: "#/" }, "Home")));
+    view = shell(h("div", { class: "card" }, h("h2", {}, "Something went wrong"), h("p", { class: "err" }, e.message), h("a", { class: "btn ghost", href: session.role === "admin" ? "#/admin" : "#/" }, "Home")), session.role === "admin" ? "#/admin" : "#/");
   }
   $app.replaceChildren(view);
   window.scrollTo(0, 0);

@@ -336,3 +336,19 @@ body.nav-live .top .nav { display: none; }
 .secrow > * { min-width: 0; }
 .secrow b, .secrow .small { overflow-wrap: anywhere; }
 @media (max-width: 700px) { .secrow { grid-template-columns: 1fr 64px; } }
+
+/* ===== trainer / visit screens ===== */
+.pick-search { font-size: 17px; padding: 14px 16px; border-radius: 14px; }
+.pick-list { margin-top: 12px; display: grid; gap: 8px; max-height: 62vh; overflow: auto; }
+.pick { display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: left; width: 100%; background: #fff; border: 1.5px solid var(--line); border-radius: 12px; padding: 12px 14px; cursor: pointer; }
+.pick:hover { border-color: var(--ink); }
+.pick:active { transform: scale(.99); }
+.pick .chip { flex: none; }
+.notice { display: block; margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: rgba(212,179,139,.45); font-weight: 800; text-decoration: none; color: var(--ink); }
+.range { gap: 8px; }
+.range input[type=date].flt { padding: 6px 10px; }
+.note-row { padding: 10px 0; border-top: 1px solid var(--line); }
+.note-row:first-of-type { border-top: 0; }
+.pending-row { padding: 10px 14px; border: 1.5px solid var(--tan); border-radius: 12px; background: rgba(212,179,139,.18); }
+.login-card .tabs { gap: 6px; }
+.login-card .tab { flex: 1; text-align: center; }
