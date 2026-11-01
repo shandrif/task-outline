@@ -1934,5 +1934,284 @@
     ]
    }
   ]
+ },
+ {
+  "name": "Coffee Campaign",
+  "sections": [
+   {
+    "title": "Hot Drip Coffee",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Start by placing a filter paper on the drip funnel and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2. Weigh the selected Coffee Origin According to its Batch size."
+     },
+     {
+      "kind": "question",
+      "text": "3. Place the weighed Drip Coffee Beans into the designated grinder for Drip Coffee Beans only."
+     },
+     {
+      "kind": "question",
+      "text": "4. Position the stainless cup on the spout of the grinder. Make sure the grinder is set to Drip coffee settings."
+     },
+     {
+      "kind": "question",
+      "text": "5. Start grinding the drip coffee beans and when grinding finishes, remove the stainless cup. Never pre-grind coffee."
+     },
+     {
+      "kind": "note",
+      "text": "It is always best to use freshly ground beans for brewed coffee."
+     },
+     {
+      "kind": "heading",
+      "text": "Brewing"
+     },
+     {
+      "kind": "question",
+      "text": "1. Position the drip funnel with coffee grind below the spray head. Make sure that paper filter fits well without any fold side."
+     },
+     {
+      "kind": "question",
+      "text": "2. Press the desired button for brewing according to grinded amount of beans."
+     },
+     {
+      "kind": "note",
+      "text": "Note:Brewing timing will be the same for all, 5 minutes and 30 seconds"
+     },
+     {
+      "kind": "heading",
+      "text": "After Brewing Procedure & Serving"
+     },
+     {
+      "kind": "question",
+      "text": "1. When brewing finishes make sure to Shake or mix the tank, Taste the drip and have it labeled with a holding time 30 minutes after brewing."
+     },
+     {
+      "kind": "question",
+      "text": "2. Remove the Brew basket after brewing, Close the dispenser lid, Discard the used Coffee grounds,Wash the Brew Basket and Wipe the brew basket area"
+     },
+     {
+      "kind": "question",
+      "text": "3. Get desired serving cup,Dispense brewed coffee 340g for 12oz and 450g for 16oz into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "4 .Serve drip coffee along with Drip Coffee Origin Card, serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Hot Drip Coffee with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Iced Drip Coffee",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Start by placing a filter paper on the drip funnel and tare."
+     },
+     {
+      "kind": "question",
+      "text": "2. Weigh the selected Coffee Origin According to its Batch size."
+     },
+     {
+      "kind": "question",
+      "text": "3. Place the weighed Drip Coffee Beans into the designated grinder for Drip Coffee Beans only."
+     },
+     {
+      "kind": "question",
+      "text": "4. Position the stainless cup on the spout of the grinder. Make sure the grinder is set to Drip coffee settings."
+     },
+     {
+      "kind": "question",
+      "text": "5.Start grinding the drip coffee beans and when grinding finishes, remove the stainless cup. Never pre-grind coffee."
+     },
+     {
+      "kind": "note",
+      "text": "It is always best to use freshly ground beans for brewed coffee."
+     },
+     {
+      "kind": "heading",
+      "text": "Brewing"
+     },
+     {
+      "kind": "question",
+      "text": "1. Weigh the required ice cube using the plastic container based on the batch size, Use Stainless steel funnel to place all the ice inside the tank."
+     },
+     {
+      "kind": "question",
+      "text": "2. Position the drip funnel with coffee grind below the spray head."
+     },
+     {
+      "kind": "question",
+      "text": "3. Press the desired button for brewing according to grinded amount of beans."
+     },
+     {
+      "kind": "note",
+      "text": "Note:Brewing timing will be the same for all. 5 minutes and 30 seconds"
+     },
+     {
+      "kind": "heading",
+      "text": "After Brewing Procedure & Serving"
+     },
+     {
+      "kind": "question",
+      "text": "1. When brewing finishes make sure to Shake or mix the tank, Taste the drip and have it labeled with a holding time 60 minutes after brewing."
+     },
+     {
+      "kind": "question",
+      "text": "2.Remove the Brew basket after brewing, Close the dispenser lid, Discard the used Coffee grounds,Wash the Brew Basket and Wipe the brew basket area"
+     },
+     {
+      "kind": "question",
+      "text": "3.Get desired serving cup, 12oz or 16oz. Dispense brewed coffee 12oz-220g &9pcs ice/16oz-250g & 11pcs ice into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "4. Serve drip coffee along with Drip Coffee Origin Card, serve it with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Iced Drip Coffee with smile and advise customers to condiments bar or Serve with 1 Tissue"
+     },
+     {
+      "kind": "note",
+      "text": "Note: Average Preparation time is 45 seconds"
+     }
+    ]
+   },
+   {
+    "title": "Espresso Calibration",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g Dose 1), (25.0g-25.8g Dose 2)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Place the portafilter with the coffee grind into the automatic tamper(PUQ PRESS should be set to 30kg) After tamping, wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3. Then fit the group handle containing tamped grind firmly to the grouphead of the espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "4. Place the shot glass under the portafilter and allow extracting espresso. (34-36g Yield & 24-32Seconds Dose 1), (49-51g Yield & 35-50Seconds Dose 2)"
+     },
+     {
+      "kind": "note",
+      "text": "Taste the espresso in dose 1 every calibration to ensure the quality. Verify with your store in charge."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Calibration must be done every 3 hours."
+     }
+    ]
+   },
+   {
+    "title": "Espresso Serving",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1. Place portafilter on the grinder nozzle to start automatic grinding of coffee beans (18.0g-18.8g Dose 1)."
+     },
+     {
+      "kind": "question",
+      "text": "2. Place the portafilter with the coffee grind into the automatic tamper(PUQ PRESS should be set to 30kg) After tamping, wipe away any excess ground coffee."
+     },
+     {
+      "kind": "question",
+      "text": "3. Then fit the group handle containing tamped grind firmly to the grouphead of the espresso machine."
+     },
+     {
+      "kind": "question",
+      "text": "4. Place the 4oz cup under the portafilter and allow extracting espresso. (34-36g Yield & 24-32Seconds Dose 1)."
+     },
+     {
+      "kind": "note",
+      "text": "Always ensure that the espresso cup is clean , and serve the espresso along with the origin card (Ethiopian guji espresso card)."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Serve it along with printed napkin."
+     }
+    ]
+   },
+   {
+    "title": "Espresso Freddo",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.Extract Dose 02 espresso shot , yielding 49-51g within 35-50sec."
+     },
+     {
+      "kind": "question",
+      "text": "2. Add the 7 pieces of ice cubes which is 140g into the Steaming pitcher"
+     },
+     {
+      "kind": "question",
+      "text": "3.Pour the espresso Shot into the pitcher and swirl for 3 seconds"
+     },
+     {
+      "kind": "question",
+      "text": "4.Steam it for 5 -8 seconds Which reaches to 15c to 20c just to create a micro-Foam of the mix"
+     },
+     {
+      "kind": "question",
+      "text": "5.Take 12oz plastic cup and add 5pc which is 100g"
+     },
+     {
+      "kind": "question",
+      "text": "6.Add the steamed espresso mix into the cup."
+     },
+     {
+      "kind": "question",
+      "text": "7. Tap the cup before serving, to smash the water bubbles.Ensuring the presentation meets Brand Standard"
+     },
+     {
+      "kind": "question",
+      "text": "8.Serve coffee with smile and advise customer to condiments bar."
+     },
+     {
+      "kind": "note",
+      "text": "Serve Espresso Freddo with smile and advise customers to condiments bar or Serve with 1 Tissue and 1 Straw along with the origin card (Ethiopian guji espresso card)."
+     },
+     {
+      "kind": "note",
+      "text": "Note: Always ensure that the cup is clean and with great presentation."
+     }
+    ]
+   },
+   {
+    "title": "PRODUCT AWARENESS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE ABOUT 6 DIFFERENT MERCHANDISE BEANS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH ALL THE ORIGIN FLAVOR PROFILES OF EACH BEANS (MERCHANDISE BEANS)"
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE KNOWS THE PROCESS OF EACH BEANS (MERCHANDISE BEANS)"
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE NEW INSTANT SPECIALTY COFFEE."
+     }
+    ]
+   }
+  ]
  }
 ]
