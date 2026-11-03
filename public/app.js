@@ -1,4 +1,4 @@
-/* HM Staff Knowledge Evaluation — single-page front end (no build step). */
+/* HM Training Division — single-page front end (no build step). */
 "use strict";
 
 // ---------- tiny helpers ----------
@@ -176,7 +176,7 @@ function shell(content, active) {
     : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
   return h("div", {},
     h("header", { class: "top no-print" }, h("div", { class: "top-in" },
-      h("a", { class: "brand", href: "#/home" }, logo(), h("div", {}, h("b", {}, "Staff Knowledge", h("br"), "Evaluation"), h("i"))),
+      h("a", { class: "brand", href: "#/home" }, logo(), h("div", {}, h("b", {}, "Training", h("br"), "Division"), h("i"))),
       h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: idx === links.findIndex((l) => l[0] === href) ? "on" : "" }, label))),
       syncNav(links, idx),
       h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.trainer.name), !admin && h("div", { class: "small muted" }, session.trainer.designation),
@@ -256,7 +256,7 @@ function loginView(initial = "in", prefill = "", notice = "") {
     prefill = pre || prefill; notice = note;
     return [
       h("img", { class: "logo", src: "/logo.png", alt: "½M" }),
-      h("h1", {}, "Staff Knowledge Evaluation"), h("div", { class: "tan-bar" }),
+      h("h1", {}, "Training Division"), h("div", { class: "tan-bar" }),
       h("div", { class: "tabs", style: "margin:16px 0 14px" },
         h("button", { type: "button", class: "tab" + (tab === "in" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("in")) }, "Sign in"),
         h("button", { type: "button", class: "tab" + (tab === "up" ? " on" : ""), onclick: () => card.replaceChildren(...cardBody("up")) }, "Sign up")),

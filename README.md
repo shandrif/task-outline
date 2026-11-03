@@ -1,4 +1,4 @@
-# HM Staff Knowledge Evaluation
+# HM Training Division
 
 Trainers visit stores and evaluate staff against the HM SBS task outline (Feb 2026): **Cleaner, Cashier, Beverages, Barista, Manager** — 343 questions in 59 sections, loaded from the Excel workbook.
 

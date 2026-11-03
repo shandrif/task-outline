@@ -2,7 +2,7 @@
   "name": "hm-staff-evaluation",
   "private": true,
   "version": "1.0.0",
-  "description": "HM staff knowledge evaluation \u2014 Cloudflare Workers + D1",
+  "description": "HM Training Division \u2014 Cloudflare Workers + D1",
   "scripts": {
     "dev": "wrangler dev",
     "setup:local": "wrangler d1 migrations apply hm-staff-evaluation-eu --local && wrangler d1 execute hm-staff-evaluation-eu --local --file seed/seed.sql",

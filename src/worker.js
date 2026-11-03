@@ -1,4 +1,4 @@
-// HM Staff Knowledge Evaluation — Cloudflare Worker (API) + D1.
+// HM Training Division — Cloudflare Worker (API) + D1.
 // Trainers sign up, visit stores and evaluate staff; the admin sees everything. Static front-end lives in /public.
 
 import { moduleRoutes } from "./modules.js";
