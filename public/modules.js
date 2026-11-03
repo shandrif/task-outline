@@ -9,10 +9,10 @@ const storeLabel = (s) => `${s.code} · ${s.name}`;
 const STORE_KEYS = { am: "area_manager", rom: "rom", city: "city", region: "region" };   // record field -> store column
 const r1 = (n) => Math.round(n * 10) / 10;
 const field = (label, el, hint) => h("div", {}, h("label", {}, label), el, hint && h("div", { class: "small muted", style: "margin-top:4px" }, hint));
-const scoreCell = (v) => (v == null ? h("span", { class: "muted" }, "—") : h("span", { class: `pct ${pctClass(v * 20)}` }, `${v}/5`));
+const scoreCell = (v) => (v == null ? h("span", { class: "muted" }, "—") : h("span", { class: `pct ${pctClass(v)}` }, `${v}%`));
 const MODULE_ORDER = [["onboarding", "Onboarding"], ["npd", "NPD"], ["verify", "Verification"], ["sv", "Store visit"], ["coaching", "Training / Coaching"], ["development", "People Development"]];
 
-// group rows by a field and average a value (verification %, or a 1-5 score)
+// group rows by a field and average a value (a percentage)
 function rollup(rows, key, getV = (r) => r.pct) {
   const m = new Map();
   for (const r of rows) {
@@ -201,12 +201,12 @@ async function homeView() {
     development: { href: "#/m/development", n: tot(recs("development"), "n"), label: "people in development", avg: avgOf(recs("development")), line: kindsLine("development") },
   };
   const card = ([k, title]) => { const c = cards[k]; return h("a", { class: "mcard", href: c.href },
-    h("div", { class: "mt" }, title, c.score != null ? h("span", { class: `pct ${pctClass(c.score * 20)}` }, `${c.score}/5 avg`) : c.avg != null ? h("span", { class: `pct ${pctClass(c.avg)}` }, `${c.avg}% avg`) : h("span", { class: "muted small" }, "no scores yet")),
+    h("div", { class: "mt" }, title, c.score != null ? h("span", { class: `pct ${pctClass(c.score)}` }, `${c.score}% avg`) : c.avg != null ? h("span", { class: `pct ${pctClass(c.avg)}` }, `${c.avg}% avg`) : h("span", { class: "muted small" }, "no scores yet")),
     h("div", { class: "mv" }, c.n), h("div", { class: "ml" }, c.label), h("div", { class: "mline small muted" }, c.line)); };
   const recent = d.recent.map((r) => {
     const title = r.module === "storevisit" ? "Store visit" : (MODULE_ORDER.find((m) => m[0] === r.module) || [0, r.module])[1];
     return h("a", { class: "note-row", href: r.src === "sv" ? `#/sv/${r.id}` : `#/m/${r.module}`, style: "display:block;text-decoration:none;color:inherit" },
-      h("div", { class: "small muted" }, `${title} · ${r.by_name || ""} · ${fmtDateTime(r.created_at)}`), h("b", {}, r.name || "—"), r.pct != null && h("span", { class: "muted" }, r.src === "sv" ? `  ${r.pct}/5` : `  ${r.pct}%`));
+      h("div", { class: "small muted" }, `${title} · ${r.by_name || ""} · ${fmtDateTime(r.created_at)}`), h("b", {}, r.name || "—"), r.pct != null && h("span", { class: "muted" }, `  ${r.pct}%`));
   });
   let team = null;
   if (d.team) {
@@ -230,8 +230,8 @@ async function homeView() {
     kpi("tank", fmtPct(verAvg), "Verification (SBS) average score", { title: "Verification (SBS) average", headline: verAvg == null ? "No score yet" : `${verAvg}%`,
       text: [verAvg == null ? "No staff evaluation was submitted in this period." : `Across ${d.verify.evaluations} submitted staff evaluation${d.verify.evaluations === 1 ? "" : "s"} in ${per}, ${d.verify.score} of ${d.verify.max} tasks were performed correctly (${d.verify.score} ÷ ${d.verify.max} = ${verAvg}%).`],
       sections: [{ title: "Behind the number", head: ["", ""], rows: [["Store visits (Verification)", d.verify.visits], ["Different stores", d.verify.stores], ["Staff evaluations", d.verify.evaluations]] }] }),
-    kpi("", svAvg == null ? "—" : `${svAvg}/5`, "Store visit average score", { title: "Store visit average score", headline: svAvg == null ? "No score yet" : `${svAvg} out of 5`,
-      text: [svAvg == null ? "No store visit report with an overall score was saved in this period." : `The average of the overall score (out of 5) on ${d.sv.scored} store visit report${d.sv.scored === 1 ? "" : "s"} in ${per}.${d.sv.n > d.sv.scored ? ` ${d.sv.n - d.sv.scored} report${d.sv.n - d.sv.scored === 1 ? " has" : "s have"} no overall score and ${d.sv.n - d.sv.scored === 1 ? "is" : "are"} left out.` : ""}`],
+    kpi("", svAvg == null ? "—" : `${svAvg}%`, "Store visit average score", { title: "Store visit average score", headline: svAvg == null ? "No score yet" : `${svAvg}%`,
+      text: [svAvg == null ? "No store visit report with an overall score was saved in this period." : `The average of the overall score (out of 100%) on ${d.sv.scored} store visit report${d.sv.scored === 1 ? "" : "s"} in ${per}.${d.sv.n > d.sv.scored ? ` ${d.sv.n - d.sv.scored} report${d.sv.n - d.sv.scored === 1 ? " has" : "s have"} no overall score and ${d.sv.n - d.sv.scored === 1 ? "is" : "are"} left out.` : ""}`],
       sections: [{ title: "Behind the number", head: ["", ""], rows: [["Reports", d.sv.n], ["Different stores", d.sv.stores], ["Follow-up visits needed", d.sv.follow_ups]] }] }),
   ];
   return shell(h("div", {},
@@ -262,17 +262,17 @@ async function svList() {
     rows, cols, sort: { key: "visit_date", dir: -1 }, onRow: (r) => (location.hash = `#/sv/${r.id}`), empty: "No store visit reports yet.",
     searchIn: (r) => `${r.report} ${r.store} ${r.area_manager || ""} ${r.rom || ""} ${r.city || ""} ${r.trainer_name || ""} ${r.branch_manager || ""}`,
     filters: [...MAP_FILTERS, ...(admin ? [{ key: "trainer_name", label: "trainers" }] : []), { key: "visit_type", label: "visit types" }, { key: "overall_rating", label: "ratings" }, { key: "follow_up", label: "follow-ups", get: (r) => (r.follow_up ? "1" : "0"), show: (v) => (v === "1" ? "Required" : "Not required") }],
-    toolbar: [h("button", { class: "btn ghost sm", onclick: () => download([["Report", "Visit date", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Visited by", "Branch manager", "Type", "Readiness %", "Quality avg (1-5)", "Overall score (/5)", "Rating", "Follow-up"],
+    toolbar: [h("button", { class: "btn ghost sm", onclick: () => download([["Report", "Visit date", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Visited by", "Branch manager", "Type", "Readiness %", "Quality avg %", "Overall score %", "Rating", "Follow-up"],
       ...g.rows().map((r) => [r.report, r.visit_date, r.store_code, r.store_name, r.area_manager || "", r.rom || "", r.region || "", r.city || "", r.trainer_name || "", r.branch_manager || "", r.visit_type || "", r.readiness_pct ?? "", r.quality_avg ?? "", r.overall_score ?? "", r.overall_rating || "", r.follow_up ? "Yes" : "No"])], "Store_Visit_Reports.xlsx", "Store visits") }, "Export to Excel")],
   });
   const groups = [["store", "Store"], ["area_manager", "Area manager"], ["rom", "ROM"], ["region", "Region"], ["city", "City"], ["visit_type", "Visit type"], ...(admin ? [["trainer_name", "Visited by"]] : [])];
-  const per = periodText(), nStores = new Set(rows.map((r) => r.store_id)).size, rrow = (r) => [r.report, fmtDay(r.visit_date), r.store, r.trainer_name || "", r.overall_score == null ? "—" : `${r.overall_score}/5`, r.readiness_pct == null ? "—" : `${r.readiness_pct}%`];
+  const per = periodText(), nStores = new Set(rows.map((r) => r.store_id)).size, rrow = (r) => [r.report, fmtDay(r.visit_date), r.store, r.trainer_name || "", r.overall_score == null ? "—" : `${r.overall_score}%`, r.readiness_pct == null ? "—" : `${r.readiness_pct}%`];
   const rhead = ["Report", "Date", "Store", "Visited by", "Overall", "Readiness"];
   const svTiles = () => [
     kpi("tealk", rows.length, `Reports · ${nStores} store${nStores === 1 ? "" : "s"}`, { title: "Reports", headline: `${rows.length} report${rows.length === 1 ? "" : "s"} on ${nStores} store${nStores === 1 ? "" : "s"}`,
       text: [`Every store visit report saved in ${per}${admin ? "" : " by you"}. A store reported twice counts as two reports but one store.`], sections: [{ title: "Reports per store", head: ["Store", "Reports"], rows: rollup(rows, "store").sort((a, b) => b.n - a.n).map((g) => [g.name, g.n]) }] }),
-    kpi("", avg == null ? "—" : `${avg}/5`, "Average overall score", { title: "Average overall score", headline: avg == null ? "No score yet" : `${avg} out of 5`,
-      text: [avg == null ? "No report has an overall score." : `The average of the overall score (out of 5) on the ${scored.length} report${scored.length === 1 ? "" : "s"} that have one${rows.length > scored.length ? `; ${rows.length - scored.length} without a score ${rows.length - scored.length === 1 ? "is" : "are"} left out` : ""}.`],
+    kpi("", avg == null ? "—" : `${avg}%`, "Average overall score", { title: "Average overall score", headline: avg == null ? "No score yet" : `${avg}%`,
+      text: [avg == null ? "No report has an overall score." : `The average of the overall score (out of 100%) on the ${scored.length} report${scored.length === 1 ? "" : "s"} that have one${rows.length > scored.length ? `; ${rows.length - scored.length} without a score ${rows.length - scored.length === 1 ? "is" : "are"} left out` : ""}.`],
       sections: [{ title: "Lowest scores first", head: rhead, rows: [...scored].sort((a, b) => a.overall_score - b.overall_score).map(rrow) }] }),
     kpi("tank", fmtPct(ravg), "Average store readiness", { title: "Average store readiness", headline: ravg == null ? "No data yet" : `${ravg}%`,
       text: [ravg == null ? "No report has answered readiness checkpoints." : `For each report, readiness is the share of “Yes” among the checkpoints answered Yes or No. This is the average of that share over ${rd.length} report${rd.length === 1 ? "" : "s"}.`],
@@ -340,20 +340,20 @@ async function svForm(id) {
   const summary = h("div", { class: "small", style: "font-weight:700" });
   const calc = () => {
     const a = st.readiness.filter((r) => r.status !== null), q = st.quality.filter((r) => r.score !== "" && r.score != null);
-    summary.textContent = `Readiness: ${a.length ? r1((100 * a.filter((r) => r.status === 1).length) / a.length) + "%" : "—"} · Quality average: ${q.length ? r1(q.reduce((n, r) => n + +r.score, 0) / q.length) + " / 5" : "—"}`;
+    summary.textContent = `Readiness: ${a.length ? r1((100 * a.filter((r) => r.status === 1).length) / a.length) + "%" : "—"} · Quality average: ${q.length ? r1(q.reduce((n, r) => n + +r.score, 0) / q.length) + "%" : "—"}`;
     return q.length ? r1(q.reduce((n, r) => n + +r.score, 0) / q.length) : null;
   };
   const seg = (obj, k) => ynSeg(() => obj[k], (v) => { obj[k] = v; calc(); });
 
   const readiness = rowList(st.readiness, (r, rm) => h("div", { class: "rrow r-ready" }, textIn(r, "item", "Checkpoint", 300, { "aria-label": "Checkpoint" }), seg(r, "status"), textIn(r, "remarks", "Remarks"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ item: "", status: null, remarks: "" }), "+ Add checkpoint");
-  const scoreSel = (r) => h("select", { "aria-label": "Score 1 to 5", onchange: (e) => { r.score = e.target.value; calc(); } }, [["", "Score"], ...[1, 2, 3, 4, 5].map((n) => [String(n), String(n)])].map(([v, l]) => h("option", { value: v, selected: String(r.score ?? "") === v }, l)));
+  const scoreSel = (r) => h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => { r.score = e.target.value; calc(); } });
   const quality = rowList(st.quality, (r, rm) => h("div", { class: "rrow r-qual" }, textIn(r, "product", "Product", 200, { "aria-label": "Product" }), seg(r, "meets"), scoreSel(r), textIn(r, "comments", "Comments"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ product: "", meets: null, score: "", comments: "" }), "+ Add product");
-  const team = rowList(st.team.rows, (r, rm) => h("div", { class: "rrow r-team" }, textIn(r, "name", "Employee name", 120), textIn(r, "position", "Position", 80), textIn(r, "score", "Score", 20), textIn(r, "observation", "Observation", 400), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ name: "", position: "", score: "", observation: "" }), "+ Add employee");
+  const team = rowList(st.team.rows, (r, rm) => h("div", { class: "rrow r-team" }, textIn(r, "name", "Employee name", 120), textIn(r, "position", "Position", 80), h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => (r.score = e.target.value) }), textIn(r, "observation", "Observation", 400), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ name: "", position: "", score: "", observation: "" }), "+ Add employee");
   const highlights = rowList(st.highlights, (r, rm) => h("div", { class: "rrow r-ready" }, textIn(r, "text", "Highlight", 300), seg(r, "status"), textIn(r, "remarks", "Remarks"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ text: "", status: null, remarks: "" }), "+ Add highlight");
   const actions = rowList(st.actions, (r, rm) => h("div", { class: "rrow r-act" }, textIn(r, "issue", "Issue / observation", 400), textIn(r, "action", "Action required", 400), textIn(r, "owner", "Owner", 100), h("input", { type: "date", value: r.due || "", "aria-label": "Due date", onchange: (e) => (r.due = e.target.value) }), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ issue: "", action: "", owner: "", due: "" }), "+ Add action");
   calc();
 
-  const scoreIn = h("input", { type: "number", min: 0, max: 5, step: "0.1", inputmode: "decimal", value: st.overall_score ?? "", oninput: (e) => (st.overall_score = e.target.value) });
+  const scoreIn = h("input", { type: "number", min: 0, max: 100, step: "0.1", inputmode: "decimal", placeholder: "%", value: st.overall_score ?? "", oninput: (e) => (st.overall_score = e.target.value) });
   const ratingSel = h("select", { onchange: (e) => (st.overall_rating = e.target.value) }, [["", "Select"], ...cfg.ratings.map((x) => [x, x])].map(([v, l]) => h("option", { value: v, selected: (st.overall_rating || "") === v }, l)));
   const save = h("button", { class: "btn teal", onclick: async () => {
     if (!st.store_id) return toast("Choose the store from the list");
@@ -381,7 +381,7 @@ async function svForm(id) {
       field("Branch / shift manager", textIn(st, "branch_manager", "", 120)),
       field("Visit type", h("select", { onchange: (e) => (st.visit_type = e.target.value) }, cfg.visitTypes.map((x) => h("option", { value: x, selected: st.visit_type === x }, x)))))),
     svBlock(1, "Store readiness", "Write your own checkpoints — Yes / No and remarks.", readiness),
-    svBlock(2, "Quality check", "Meets Half Million standard? Score 1–5.", quality),
+    svBlock(2, "Quality check", "Meets Half Million standard? Score out of 100%.", quality),
     svBlock(3, "Team performance", "Employees checked during the visit.", h("div", { class: "grid g2", style: "margin-bottom:10px" },
       field("Employees on duty", h("input", { type: "number", min: 0, value: st.team.on_duty ?? "", oninput: (e) => (st.team.on_duty = e.target.value) })),
       field("Employees checked", h("input", { type: "number", min: 0, value: st.team.checked ?? "", oninput: (e) => (st.team.checked = e.target.value) }))), team),
@@ -389,7 +389,7 @@ async function svForm(id) {
     svBlock(5, "Areas for improvement & action plan", null, actions),
     svBlock(6, "Overall assessment", null, h("div", { class: "grid g3" },
       field("Overall rating", ratingSel),
-      field("Overall score (out of 5)", h("div", { class: "row", style: "flex-wrap:nowrap" }, scoreIn, h("button", { type: "button", class: "btn ghost sm", title: "Use the average of the product scores", onclick: () => { const a = calc(); if (a != null) { st.overall_score = a; scoreIn.value = a; } } }, "Use quality avg"))),
+      field("Overall score (out of 100%)", h("div", { class: "row", style: "flex-wrap:nowrap" }, scoreIn, h("button", { type: "button", class: "btn ghost sm", title: "Use the average of the product scores", onclick: () => { const a = calc(); if (a != null) { st.overall_score = a; scoreIn.value = a; } } }, "Use quality avg"))),
       field("Follow-up visit required", ynSeg(() => (st.follow_up ? 1 : st.follow_up === 0 ? 0 : null), (v) => (st.follow_up = v === 1 ? 1 : 0)))),
       summary,
       field("Overall comment", h("textarea", { rows: 4, maxlength: 2000, value: st.overall_comment || "", oninput: (e) => (st.overall_comment = e.target.value) })),
@@ -412,12 +412,12 @@ async function svView(id) {
       h("div", { class: "grid g3", style: "margin-top:16px" }, kv("Branch / store", `${r.store_code} · ${r.store_name}`), kv("Visit date", fmtDay(r.visit_date)), kv("Visit time", r.visit_time),
         kv("Visited by", r.trainer_name), kv("Branch / shift manager", r.branch_manager), kv("Visit type", r.visit_type), kv("Area manager", r.area_manager), kv("ROM", r.rom), kv("City / region", [r.city, r.region].filter(Boolean).join(" · ")))),
     h("div", { class: "card" }, h("h2", {}, "1 · Store readiness"), table(["Checkpoint", "Status", "Remarks"], r.readiness || [], (x) => [x.item, yn(x.status), x.remarks], "No checkpoints recorded.")),
-    h("div", { class: "card" }, h("h2", {}, "2 · Quality check"), table(["Product", "Meets standard", "Score", "Comments"], r.quality || [], (x) => [x.product, yn(x.meets), x.score ?? "—", x.comments], "No products recorded.")),
-    h("div", { class: "card" }, h("h2", {}, "3 · Team performance"), h("p", { class: "small", style: "margin:0 0 8px" }, `Employees on duty: ${r.team?.on_duty ?? "—"} · Employees checked: ${r.team?.checked ?? "—"}`), table(["Employee name", "Position", "Score", "Observation"], r.team?.rows || [], (x) => [x.name, x.position, x.score, x.observation], "No employees recorded.")),
+    h("div", { class: "card" }, h("h2", {}, "2 · Quality check"), table(["Product", "Meets standard", "Score", "Comments"], r.quality || [], (x) => [x.product, yn(x.meets), x.score == null || x.score === "" ? "—" : `${x.score}%`, x.comments], "No products recorded.")),
+    h("div", { class: "card" }, h("h2", {}, "3 · Team performance"), h("p", { class: "small", style: "margin:0 0 8px" }, `Employees on duty: ${r.team?.on_duty ?? "—"} · Employees checked: ${r.team?.checked ?? "—"}`), table(["Employee name", "Position", "Score", "Observation"], r.team?.rows || [], (x) => [x.name, x.position, x.score == null || x.score === "" ? "" : `${x.score}%`, x.observation], "No employees recorded.")),
     h("div", { class: "card" }, h("h2", {}, "4 · Visit highlights"), table(["Highlight", "Status", "Remarks"], r.highlights || [], (x) => [x.text, yn(x.status), x.remarks], "No highlights recorded.")),
     h("div", { class: "card" }, h("h2", {}, "5 · Areas for improvement & action plan"), table(["Issue / observation", "Action required", "Owner", "Due date"], r.actions || [], (x) => [x.issue, x.action, x.owner, x.due ? fmtDay(x.due) : ""], "No actions recorded.")),
     h("div", { class: "card" }, h("h2", {}, "6 · Overall assessment"),
-      h("div", { class: "grid g3" }, kv("Overall rating", r.overall_rating), kv("Overall score (out of 5)", r.overall_score == null ? "" : String(r.overall_score)), kv("Follow-up visit required", r.follow_up ? "Yes" : "No")),
+      h("div", { class: "grid g3" }, kv("Overall rating", r.overall_rating), kv("Overall score (out of 100%)", r.overall_score == null ? "" : `${r.overall_score}%`), kv("Follow-up visit required", r.follow_up ? "Yes" : "No")),
       h("div", { class: "small muted", style: "margin-top:12px" }, `Store readiness ${r.readiness_pct == null ? "—" : r.readiness_pct + "%"} · Quality average ${r.quality_avg == null ? "—" : r.quality_avg + " / 5"}`),
       h("div", { style: "margin-top:12px" }, h("div", { class: "k small muted" }, "Overall comment"), h("div", { style: "white-space:pre-wrap" }, r.overall_comment || "—"))),
     h("div", { class: "card sign" }, h("div", { class: "grid g2" },

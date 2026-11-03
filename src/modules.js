@@ -171,11 +171,11 @@ export async function moduleRoutes(c) {
     const time = svText(b.visit_time, 5, "Visit time");
     if (time && !/^\d{2}:\d{2}$/.test(time)) throw bad("Visit time must look like 14:30");
     const readiness = svRows(b.readiness, 40, (r) => ({ item: svText(r?.item, 300, "Checkpoint"), status: yn(r?.status), remarks: svText(r?.remarks, 300, "Remarks") }));
-    const quality = svRows(b.quality, 40, (r) => ({ product: svText(r?.product, 200, "Product"), meets: yn(r?.meets), score: num(r?.score, 1, 5, "Score", { int: true }), comments: svText(r?.comments, 300, "Comments") }));
+    const quality = svRows(b.quality, 40, (r) => ({ product: svText(r?.product, 200, "Product"), meets: yn(r?.meets), score: num(r?.score, 0, 100, "Score", { int: true }), comments: svText(r?.comments, 300, "Comments") }));
     const t = b.team || {};
     const team = {
       on_duty: num(t.on_duty, 0, 500, "Employees on duty", { int: true }), checked: num(t.checked, 0, 500, "Employees checked", { int: true }),
-      rows: svRows(t.rows, 60, (r) => ({ name: svText(r?.name, 120, "Employee name"), position: svText(r?.position, 80, "Position"), score: svText(r?.score, 20, "Score"), observation: svText(r?.observation, 400, "Observation") })),
+      rows: svRows(t.rows, 60, (r) => ({ name: svText(r?.name, 120, "Employee name"), position: svText(r?.position, 80, "Position"), score: num(r?.score, 0, 100, "Employee score", { int: true }), observation: svText(r?.observation, 400, "Observation") })),
     };
     const highlights = svRows(b.highlights, 20, (r) => ({ text: svText(r?.text, 300, "Highlight"), status: yn(r?.status), remarks: svText(r?.remarks, 300, "Remarks") }));
     const actions = svRows(b.actions, 40, (r) => ({ issue: svText(r?.issue, 400, "Issue"), action: svText(r?.action, 400, "Action required"), owner: svText(r?.owner, 100, "Owner"), due: (() => { const d = svText(r?.due, 10, "Due date"); if (d && !DATE.test(d)) throw bad("Due date must be a date"); return d; })() }));
@@ -191,7 +191,7 @@ export async function moduleRoutes(c) {
       body: JSON.stringify(body),
       readiness_pct: answered.length ? Math.round((1000 * answered.filter((r) => r.status === 1).length) / answered.length) / 10 : null,
       quality_avg: scored.length ? Math.round((10 * scored.reduce((n, r) => n + r.score, 0)) / scored.length) / 10 : null,
-      overall_rating: rating || null, overall_score: num(b.overall_score, 0, 5, "Overall score"), follow_up: b.follow_up === 1 || b.follow_up === true ? 1 : 0,
+      overall_rating: rating || null, overall_score: num(b.overall_score, 0, 100, "Overall score"), follow_up: b.follow_up === 1 || b.follow_up === true ? 1 : 0,
     };
   };
   const SV_LIST = `SELECT r.id,r.store_id,r.trainer_id,r.visit_date,r.visit_time,r.visit_type,r.branch_manager,r.readiness_pct,r.quality_avg,r.overall_rating,r.overall_score,r.follow_up,r.created_at,r.updated_at,
