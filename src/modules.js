@@ -48,7 +48,7 @@ export const MODULES = {
 };
 
 const RATINGS = ["Excellent", "Good", "Satisfactory", "Needs improvement", "Poor"];
-const VISIT_TYPES = ["Routine", "Follow-up", "Surprise", "Audit"];
+const VISIT_TYPES = ["Routine", "Follow-up", "Audit"];
 export const SV_CONFIG = { ratings: RATINGS, visitTypes: VISIT_TYPES };
 
 const CORE = new Set(["emp_id", "name", "pct"]);
