@@ -1,6 +1,8 @@
 // HM Staff Knowledge Evaluation — Cloudflare Worker (API) + D1.
 // Trainers sign up, visit stores and evaluate staff; the admin sees everything. Static front-end lives in /public.
 
+import { moduleRoutes } from "./modules.js";
+
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
 const TRAINER_TTL = 60 * 60 * 24 * 7; // trainers: 7 days
@@ -423,6 +425,12 @@ async function handle(request, env, ctx) {
   const needTrainer = () => { if (isAdmin) throw new HttpError(403, "This action is done from a trainer account"); };
   const body = () => request.json().catch(() => { throw bad("Invalid JSON"); });
   const from = ts(url.searchParams.get("from")), to = ts(url.searchParams.get("to"));
+
+  // --- onboarding / NPD / coaching / people development / store visit reports ---
+  if (/^\/api\/(modules|records|home|sv)(\/|$)/.test(path)) {
+    const r = await moduleRoutes({ path, method, url, env, session, isAdmin, from, to, body, bad, HttpError, json, str });
+    if (r) return r;
+  }
 
   // --- shared reads ---
   if (path === "/api/positions" && method === "GET") return json(await listPositions(env));

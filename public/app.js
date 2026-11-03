@@ -148,7 +148,7 @@ const fmtDateTime = (s) => (s ? new Date(s.replace(" ", "T") + "Z").toLocaleStri
 const daysSince = (s) => (s ? Math.floor((Date.now() - new Date(s.replace(" ", "T") + "Z")) / 864e5) : null);
 
 // ---- liquid navbar (React island, loaded after first paint; plain links are the fallback) ----
-const NAV_KEYS = { "#/admin": "dashboard", "#/admin/trainers": "trainers", "#/admin/visits": "visits", "#/admin/stores": "stores", "#/admin/questions": "questions", "#/": "visits", "#/visit/new": "add" };
+const NAV_KEYS = { "#/home": "dashboard", "#/m/onboarding": "onboarding", "#/m/npd": "npd", "#/admin": "evaluations", "#/verify": "evaluations", "#/sv": "visits", "#/m/coaching": "coaching", "#/m/development": "growth" };
 let navHost = null, navApi = null, navRole = null, navLinks = [];
 function syncNav(links, activeIdx) {
   navLinks = links;
@@ -163,20 +163,25 @@ function syncNav(links, activeIdx) {
   return navHost;
 }
 
+const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/verify", "#/visit/new"]);
 function shell(content, active) {
   const admin = session.role === "admin";
-  const links = admin
+  if (active === "#/") active = "#/verify";
+  const ver = admin ? "#/admin" : "#/verify";
+  const links = [["#/home", "Dashboard"], ["#/m/onboarding", "Onboarding"], ["#/m/npd", "NPD"], [ver, "Verification"], ["#/sv", "Store visit"], ["#/m/coaching", "Coaching"], ["#/m/development", "People dev"]];
+  const inVerify = VERIFY_SUB.has(active);
+  const idx = Math.max(0, links.findIndex(([href]) => href === (inVerify ? ver : active)));
+  const sub = inVerify ? (admin
     ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
-    : [["#/", "My visits"], ["#/visit/new", "New visit"]];
-  const idx = Math.max(0, links.findIndex(([href]) => href === active));
+    : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
   return h("div", {},
     h("header", { class: "top no-print" }, h("div", { class: "top-in" },
-      h("a", { class: "brand", href: admin ? "#/admin" : "#/" }, logo(), h("div", {}, h("b", {}, "Staff Knowledge", h("br"), "Evaluation"), h("i"))),
-      h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))),
+      h("a", { class: "brand", href: "#/home" }, logo(), h("div", {}, h("b", {}, "Staff Knowledge", h("br"), "Evaluation"), h("i"))),
+      h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: idx === links.findIndex((l) => l[0] === href) ? "on" : "" }, label))),
       syncNav(links, idx),
       h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.trainer.name), !admin && h("div", { class: "small muted" }, session.trainer.designation),
         h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; navHost = null; navApi = null; document.body.classList.remove("nav-live"); cache.clear(); location.hash = ""; render(); } }, "Sign out")))),
-    h("main", {}, content));
+    h("main", {}, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content));
 }
 
 function pageHead(title, sub, ...right) {
@@ -199,7 +204,7 @@ function loginView(initial = "in", prefill = "", notice = "") {
       e.preventDefault(); btn.disabled = true; err.classList.add("hidden");
       try {
         await api("/login", { method: "POST", body: { username: user.value.trim(), password: pass.value } });
-        session = await api("/me"); location.hash = session.role === "admin" ? "#/admin" : "#/"; render();
+        session = await api("/me"); location.hash = "#/home"; render();
       } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
     } }, notice && h("div", { class: "ok" }, notice), field("Employee ID", user), field("Password", pass), err, btn,
       h("p", { class: "small muted", style: "margin:0" }, "Admin? Sign in with the admin username."));
@@ -304,7 +309,7 @@ async function visitView(id) {
   const isTrainer = session.role === "trainer", open = v.status === "open", canWork = isTrainer && open;
   const submitted = evaluations.filter((e) => e.status === "submitted");
   const avg = pct(v.sum_score, v.sum_max);
-  const back = isTrainer ? "#/" : "#/admin/visits";
+  const back = isTrainer ? "#/verify" : "#/admin/visits";
 
   // --- add a staff member (open visit only) ---
   let pos = null;
@@ -515,14 +520,22 @@ async function evalForm(ev) {
 
   // Expand/collapse all: build a few sections per frame so the page never freezes
   const allOpen = h("button", { class: "btn ghost sm", onclick: async () => {
-    const open = refs.some((r) => !r.el.classList.contains("open"));
-    for (let i = 0; i < refs.length; i += 3) { refs.slice(i, i + 3).forEach((r) => toggleSection(r, open)); if (open) await new Promise(requestAnimationFrame); }
+    const vis = refs.filter((r) => !r.el.hidden), open = vis.some((r) => !r.el.classList.contains("open"));
+    for (let i = 0; i < vis.length; i += 3) { vis.slice(i, i + 3).forEach((r) => toggleSection(r, open)); if (open) await new Promise(requestAnimationFrame); }
   } }, "Expand / collapse all");
 
+  const found = h("span", { class: "muted small" });
+  const finder = refs.length > 10 && h("div", { class: "card no-print", style: "padding:12px 16px" }, h("div", { class: "row", style: "flex-wrap:nowrap" },
+    h("input", { type: "search", class: "flt-search", style: "flex:1;max-width:none", placeholder: "Search drinks or sections…", "aria-label": "Search drinks or sections", oninput: (e) => {
+      const q = e.target.value.trim().toLowerCase(); const hits = [];
+      for (const r of refs) { const hit = !q || r.sec.title.toLowerCase().includes(q) || r.sec.items.some((i) => i.text.toLowerCase().includes(q)); r.el.hidden = !hit; if (hit) hits.push(r); }
+      found.textContent = q ? `${hits.length} of ${refs.length} sections` : "";
+      if (q && hits.length <= 2) hits.forEach((r) => toggleSection(r, true));
+    } }), found));
   window.addEventListener("beforeunload", () => { if (dirty.size) flush(); }, { once: true });
   return shell(h("div", {},
     pageHead(`Evaluating ${ev.staff_name}`, `${ev.position_name}${ev.staff_code ? " · ID " + ev.staff_code : ""} · ${ev.store_name}. Answers save automatically.`, h("a", { class: "btn ghost sm", href: `#/visit/${ev.visit_id}` }, "← Visit"), allOpen, del),
-    bar, secEls,
+    bar, finder, secEls,
     h("div", { class: "card no-print" }, h("h2", {}, "Areas for improvement"), h("p", { class: "muted small", style: "margin:4px 0 10px" }, "Note what this person should work on and any training they need. It appears on their result and in the admin reports."), notes),
     h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, submitBtns[1])), "#/");
 }
@@ -962,8 +975,14 @@ async function renderRouteInner() {
   const query = new URLSearchParams(qs || "");
   let m, view;
   try {
-    if (session.role === "admin") {
-      if (path === "/admin" || path === "/") view = await adminHome();
+    if (path === "/home" || path === "/") view = await homeView();
+    else if ((m = path.match(/^\/m\/(onboarding|npd|coaching|development)$/))) view = await moduleView(m[1]);
+    else if (path === "/sv") view = await svList();
+    else if (path === "/sv/new") view = await svForm(null);
+    else if ((m = path.match(/^\/sv\/(\d+)\/edit$/))) view = await svForm(m[1]);
+    else if ((m = path.match(/^\/sv\/(\d+)$/))) view = await svView(m[1]);
+    else if (session.role === "admin") {
+      if (path === "/admin") view = await adminHome();
       else if (path === "/admin/trainers") view = await adminTrainers();
       else if ((m = path.match(/^\/admin\/trainer\/(\d+)$/))) view = await adminTrainer(m[1]);
       else if (path === "/admin/visits") view = await adminVisits(query);
@@ -971,16 +990,17 @@ async function renderRouteInner() {
       else if (path === "/admin/stores") view = await adminStores();
       else if ((m = path.match(/^\/visit\/(\d+)$/))) view = await visitView(m[1]);
       else if ((m = path.match(/^\/eval\/(\d+)$/))) view = await evalRoute(m[1]);
-      else view = await adminHome();
+      else view = await homeView();
     } else {
-      if (path === "/visit/new") view = await newVisitView();
+      if (path === "/verify") view = await trainerHome();
+      else if (path === "/visit/new") view = await newVisitView();
       else if ((m = path.match(/^\/visit\/(\d+)$/))) view = await visitView(m[1]);
       else if ((m = path.match(/^\/eval\/(\d+)$/))) view = await evalRoute(m[1]);
-      else view = await trainerHome();
+      else view = await homeView();
     }
   } catch (e) {
     if (!session.role) return;
-    view = shell(h("div", { class: "card" }, h("h2", {}, "Something went wrong"), h("p", { class: "err" }, e.message), h("a", { class: "btn ghost", href: session.role === "admin" ? "#/admin" : "#/" }, "Home")), session.role === "admin" ? "#/admin" : "#/");
+    view = shell(h("div", { class: "card" }, h("h2", {}, "Something went wrong"), h("p", { class: "err" }, e.message), h("a", { class: "btn ghost", href: "#/home" }, "Home")), session.role === "admin" ? "#/admin" : "#/");
   }
   $app.replaceChildren(view);
   window.scrollTo(0, 0);

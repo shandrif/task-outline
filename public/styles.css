@@ -30,7 +30,7 @@ a { color: inherit; }
 .brand img { height: 34px; display: block; }
 .brand b { font-weight: 900; font-size: 15px; line-height: 1.1; }
 .brand i { display: block; width: 28px; height: 4px; background: var(--tan); border-radius: 2px; margin-top: 4px; }
-.nav { display: flex; gap: 4px; margin-left: 18px; flex: 1; overflow-x: auto; }
+.nav { display: flex; gap: 4px; margin: 0; flex: 1 1 100%; order: 3; justify-content: center; overflow-x: auto; }
 .nav a { padding: 8px 12px; border-radius: 999px; text-decoration: none; font-weight: 700; font-size: 15px; white-space: nowrap; }
 .nav a:hover { background: rgba(212,179,139,.3); }
 .nav a.on { background: var(--ink); color: var(--bg); }
@@ -321,14 +321,13 @@ body.loading::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 
 @media print { .bg { display: none; } body { background: #fff; } }
 
 /* ===== Liquid navbar (React island) in HM colours ===== */
-.nav-host { display: none; margin-left: 14px; flex: 1; justify-content: flex-start; min-width: 0; }
+.top-in { flex-wrap: wrap; row-gap: 6px; }
+.who { margin-left: auto; }
+.nav-host { display: none; order: 3; flex: 1 1 100%; margin: 0; justify-content: center; min-width: 0; }
 body.nav-live .nav-host { display: flex; }
 body.nav-live .top .nav { display: none; }
 .top .nimbus-nav { --n-tint: rgba(255,255,255,.38); --n-fg: #1D1B17; --n-fg-soft: rgba(29,27,23,.62); --n-rim: rgba(255,255,255,.95); }
 .top .nimbus-item { font-weight: 700; }
-@media (max-width: 700px) {
-  .nav-host { order: 3; flex: 1 1 100%; margin: 0; justify-content: center; }
-}
 @media print { .nav-host { display: none !important; } }
 
 /* long section names must wrap inside their column instead of running under the bar */
@@ -352,3 +351,39 @@ body.nav-live .top .nav { display: none; }
 .pending-row { padding: 10px 14px; border: 1.5px solid var(--tan); border-radius: 12px; background: rgba(212,179,139,.18); }
 .login-card .tabs { gap: 6px; }
 .login-card .tab { flex: 1; text-align: center; }
+
+/* ===== modules: sub-navigation, master dashboard cards, record forms, store visit report ===== */
+.subnav { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+.subnav > span { font-weight: 700; margin-right: 4px; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; }
+.subnav a { padding: 6px 14px; border-radius: 999px; text-decoration: none; font-weight: 700; font-size: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.55); }
+.subnav a:hover { background: rgba(212,179,139,.3); }
+.subnav a.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.mcard { display: block; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
+.mcard:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(29,27,23,.08); }
+.mcard .mt { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 800; }
+.mcard .mv { font-size: 38px; font-weight: 900; line-height: 1.1; margin-top: 10px; }
+.mcard .ml { font-size: 13px; color: var(--muted); }
+.mcard .mline { margin-top: 8px; }
+.span2 { grid-column: 1 / -1; }
+.sec[hidden] { display: none; }
+.svb .svh { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.svn { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--tan); display: grid; place-items: center; font-weight: 900; }
+.rl { display: grid; gap: 8px; }
+.rl > .btn { justify-self: start; }
+.rrow { display: grid; gap: 8px; align-items: center; }
+.rrow input, .rrow select { min-width: 0; width: 100%; }
+.r-ready { grid-template-columns: minmax(0, 3fr) auto minmax(0, 2fr) 34px; }
+.r-qual { grid-template-columns: minmax(0, 2.4fr) auto 92px minmax(0, 2fr) 34px; }
+.r-team { grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) 84px minmax(0, 3fr) 34px; }
+.r-act { grid-template-columns: minmax(0, 3fr) minmax(0, 3fr) minmax(0, 1.4fr) 150px 34px; }
+@media (max-width: 760px) {
+  .rrow { grid-template-columns: 1fr 1fr; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.5); }
+  .rrow > :first-child { grid-column: 1 / -1; }
+  .rrow > .icon { justify-self: end; }
+  .subnav { overflow-x: auto; flex-wrap: nowrap; }
+}
+.kv .k { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.kv .vv { font-weight: 700; margin-top: 2px; }
+.sign .sigline { border-bottom: 1.5px solid var(--ink); height: 44px; margin-bottom: 4px; }
+@media print { .subnav { display: none; } .svview .card { box-shadow: none; } }
+.card .grid input[type=number], .card .grid input[type=date], .card .grid input[type=time] { width: 100%; }

@@ -48,3 +48,10 @@ npm run setup:local && npm run dev   # http://localhost:8787
 
 ## Cloudflare free-plan notes
 Typical load is far below the free limits (Workers 100,000 requests/day · D1 5 million rows read and 100,000 rows written per day · 10 ms CPU per request). The reports are built to stay cheap as data grows: date-range indexes, one grouped pass instead of per-trainer sub-queries, "last visit" stored on the trainer/store row, weakest areas based on the latest 2,000 evaluations in the period, lists that load the newest 300 rows first, and a 30-day default period. Sign-in hashing uses a secret pepper plus a light PBKDF2 so it fits the CPU limit; raise `PBKDF2_ITERS` in `src/worker.js` if you move to the paid plan.
+
+## Six areas (Onboarding · NPD · Verification · Store visit · Training/Coaching · People development)
+
+- **Master dashboard** (`#/home`): one card per area, team activity (admin) and latest activity. Trainers see only their own numbers.
+- **Onboarding** (HM / External / International), **NPD**, **Training/Coaching**, **People development** (5 tracks): generic records in the `records` table. Fields are defined once in `src/modules.js` and the forms/tables are built from it. Onboarding verification % = average of theory % and practical %. Trainers add/edit/delete their own records; the admin sees and edits everything.
+- **Verification**: the original SBS evaluation. Barista and Beverages are now one position, **Barista verification**, with a search bar for drinks (migration `0008`, existing evaluations keep their answers).
+- **Store visit** reports (`sv_reports`): the Half Million Store Visit Report form — readiness, quality check, team performance, highlights, action plan, overall assessment, printable as PDF.

@@ -321,8 +321,168 @@
   ]
  },
  {
-  "name": "Beverages",
+  "name": "Barista verification",
   "sections": [
+   {
+    "title": "PRODUCT KNOWLEDGE",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE OF THE COLD SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS AWARE OF THE HOT SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS AWARE OF THE DRIP COFFEE SECTION PRODUCTS (HOT AND COLD)."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE ICECREAM SECTION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS AWARE OF THE MIXES PREPERATION"
+     },
+     {
+      "kind": "question",
+      "text": "6.THE EMPLOYEE IS AWARE OF ALL FOOD ITEMS (SWEET AND SANDWICHES)"
+     }
+    ]
+   },
+   {
+    "title": "LATTE ART",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE LATTE ART AND MAKING LATTE ART ON EVERY HOT DRINK."
+     }
+    ]
+   },
+   {
+    "title": "CALIBRATION",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE CALLIBRATION PROCCEDUR AND APPLING IT."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FELLING THE CALLIBRATION SHEET."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FELLING THE DRIP COFFEE CALLIBRATION SHEET."
+     }
+    ]
+   },
+   {
+    "title": "DISPATCHING",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS VERIFYING THE CUSTOMER INVOICE."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS ARRENGAING THE CUSTOMER ORDER BEFORE DISPATCHING IT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE DIRECTING THE CUSTOMER TO THE CONDIMENTS."
+     }
+    ]
+   },
+   {
+    "title": "PRODUCT AWARENESS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS AWARE ABOUT ALL MENU ITEMS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH ALL THE PRODUCT ALLERGIES"
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE KNOWS THE PRICES OF HALF MILLION PRODUCTS."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS AWARE OF THE PRICES OF ANY ADDITIONALS ON PRODUCTS."
+     }
+    ]
+   },
+   {
+    "title": "HALF MILLION BRANDED MUGS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.TEAM KNOWS ALL RELATED INFORMATION ON HALF MILLION MUGS"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS AWARE HOW TO CHECK ANY HALF MILLION MUG."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE POLICY OF THE FREE DRINK INSIDE THE MUG AND IT CRITIRAS."
+     }
+    ]
+   },
+   {
+    "title": "TEAM WORK AND COMMUNICATION SKILLS",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS MAKING CLEAR COMMUNCATION AMOUNG HIS STORE TEAM TO ENSURE A SMOOTH OPERATION."
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS WORKING WITH HIS TEAM AND ALWAYS READY TO HELP ALWAYS."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS HELPING HIS TEAM IN PREPEARING PRODUCTS (SANDWICHES, SWEET)."
+     }
+    ]
+   },
+   {
+    "title": "POLICIES",
+    "items": [
+     {
+      "kind": "question",
+      "text": "1.THE EMPLOYEE IS APPLYING HALF MILLION DRIP COFFEE REFILL POLICY"
+     },
+     {
+      "kind": "question",
+      "text": "2.THE EMPLOYEE IS FAMILIAR WITH THE STAFF USAGE DISCOUNT."
+     },
+     {
+      "kind": "question",
+      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE VACATION AND SICKLEAVES POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "4.THE EMPLOYEE IS FAMILIAR OF THE BREAK POLICY."
+     },
+     {
+      "kind": "question",
+      "text": "5.THE EMPLOYEE IS FAMILIAR WITH THE DEPLOYMENT POLICIES."
+     },
+     {
+      "kind": "question",
+      "text": "6.THE EMPLOYEE IS WORKING THEIR FULL WORKING HOURS AND FOLLOWING THE SCEDUALE."
+     },
+     {
+      "kind": "question",
+      "text": "7.THE EMPLOYEE IS FAMILIAR WITH THE COMPANY DRESS CODE POLCY (INCLUDING PPE)"
+     }
+    ]
+   },
    {
     "title": "Hot Drip Coffee",
     "items": [
@@ -1551,171 +1711,6 @@
      {
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
-     }
-    ]
-   }
-  ]
- },
- {
-  "name": "Barista",
-  "sections": [
-   {
-    "title": "PRODUCT KNOWLEDGE",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS AWARE OF THE COLD SECTION PRODUCTS."
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS AWARE OF THE HOT SECTION PRODUCTS."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE IS AWARE OF THE DRIP COFFEE SECTION PRODUCTS (HOT AND COLD)."
-     },
-     {
-      "kind": "question",
-      "text": "4.THE EMPLOYEE IS AWARE OF THE ICECREAM SECTION PRODUCTS."
-     },
-     {
-      "kind": "question",
-      "text": "5.THE EMPLOYEE IS AWARE OF THE MIXES PREPERATION"
-     },
-     {
-      "kind": "question",
-      "text": "6.THE EMPLOYEE IS AWARE OF ALL FOOD ITEMS (SWEET AND SANDWICHES)"
-     }
-    ]
-   },
-   {
-    "title": "LATTE ART",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE LATTE ART AND MAKING LATTE ART ON EVERY HOT DRINK."
-     }
-    ]
-   },
-   {
-    "title": "CALIBRATION",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS FAMILIAR WITH THE CALLIBRATION PROCCEDUR AND APPLING IT."
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS FELLING THE CALLIBRATION SHEET."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE IS FELLING THE DRIP COFFEE CALLIBRATION SHEET."
-     }
-    ]
-   },
-   {
-    "title": "DISPATCHING",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS VERIFYING THE CUSTOMER INVOICE."
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS ARRENGAING THE CUSTOMER ORDER BEFORE DISPATCHING IT."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE DIRECTING THE CUSTOMER TO THE CONDIMENTS."
-     }
-    ]
-   },
-   {
-    "title": "PRODUCT AWARENESS",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS AWARE ABOUT ALL MENU ITEMS"
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS FAMILIAR WITH ALL THE PRODUCT ALLERGIES"
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE KNOWS THE PRICES OF HALF MILLION PRODUCTS."
-     },
-     {
-      "kind": "question",
-      "text": "4.THE EMPLOYEE IS AWARE OF THE PRICES OF ANY ADDITIONALS ON PRODUCTS."
-     }
-    ]
-   },
-   {
-    "title": "HALF MILLION BRANDED MUGS",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.TEAM KNOWS ALL RELATED INFORMATION ON HALF MILLION MUGS"
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS AWARE HOW TO CHECK ANY HALF MILLION MUG."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE POLICY OF THE FREE DRINK INSIDE THE MUG AND IT CRITIRAS."
-     }
-    ]
-   },
-   {
-    "title": "TEAM WORK AND COMMUNICATION SKILLS",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS MAKING CLEAR COMMUNCATION AMOUNG HIS STORE TEAM TO ENSURE A SMOOTH OPERATION."
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS WORKING WITH HIS TEAM AND ALWAYS READY TO HELP ALWAYS."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE IS HELPING HIS TEAM IN PREPEARING PRODUCTS (SANDWICHES, SWEET)."
-     }
-    ]
-   },
-   {
-    "title": "POLICIES",
-    "items": [
-     {
-      "kind": "question",
-      "text": "1.THE EMPLOYEE IS APPLYING HALF MILLION DRIP COFFEE REFILL POLICY"
-     },
-     {
-      "kind": "question",
-      "text": "2.THE EMPLOYEE IS FAMILIAR WITH THE STAFF USAGE DISCOUNT."
-     },
-     {
-      "kind": "question",
-      "text": "3.THE EMPLOYEE IS FAMILIAR WITH THE VACATION AND SICKLEAVES POLICIES."
-     },
-     {
-      "kind": "question",
-      "text": "4.THE EMPLOYEE IS FAMILIAR OF THE BREAK POLICY."
-     },
-     {
-      "kind": "question",
-      "text": "5.THE EMPLOYEE IS FAMILIAR WITH THE DEPLOYMENT POLICIES."
-     },
-     {
-      "kind": "question",
-      "text": "6.THE EMPLOYEE IS WORKING THEIR FULL WORKING HOURS AND FOLLOWING THE SCEDUALE."
-     },
-     {
-      "kind": "question",
-      "text": "7.THE EMPLOYEE IS FAMILIAR WITH THE COMPANY DRESS CODE POLCY (INCLUDING PPE)"
      }
     ]
    }
