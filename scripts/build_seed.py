@@ -10,7 +10,7 @@ for pid, p in enumerate(json.load(open(src)), 1):
     lines.append(f"INSERT INTO positions (id,name,sort) VALUES ({pid},{q(p['name'])},{pid});")
     for si, s in enumerate(p["sections"], 1):
         sid += 1
-        lines.append(f"INSERT INTO sections (id,position_id,title,sort) VALUES ({sid},{pid},{q(s['title'].strip())},{si});")
+        lines.append(f"INSERT INTO sections (id,position_id,title,sort,picker) VALUES ({sid},{pid},{q(s['title'].strip())},{si},{1 if s.get('picker') else 0});")
         for ii, it in enumerate(s["items"], 1):
             iid += 1
             text = re.sub(r"^\s*\d+\s*\.\s*", "", it["text"]).strip() if it["kind"] == "question" else it["text"].strip()

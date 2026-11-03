@@ -181,7 +181,7 @@ async function signup(env, request, ctx) {
 async function positionTree(env, positionId) {
   const [pos, secs, items] = await env.DB.batch([
     env.DB.prepare("SELECT id,name FROM positions WHERE id=? AND active=1").bind(positionId),
-    env.DB.prepare("SELECT id,title FROM sections WHERE position_id=? AND active=1 ORDER BY sort,id").bind(positionId),
+    env.DB.prepare("SELECT id,title,picker FROM sections WHERE position_id=? AND active=1 ORDER BY sort,id").bind(positionId),
     env.DB.prepare("SELECT i.id,i.section_id,i.kind,i.text FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=? AND s.active=1 AND i.active=1 ORDER BY i.sort,i.id").bind(positionId),
   ]);
   if (!pos.results[0]) throw new HttpError(404, "Position not found");
@@ -211,7 +211,7 @@ async function evaluationDetail(env, session, id) {
        FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id
        LEFT JOIN trainers t ON t.id=e.trainer_id LEFT JOIN visits v ON v.id=e.visit_id WHERE e.id=?`
     ).bind(id),
-    env.DB.prepare("SELECT id,title,active FROM sections WHERE position_id=(SELECT position_id FROM evaluations WHERE id=?) ORDER BY sort,id").bind(id),
+    env.DB.prepare("SELECT id,title,active,picker FROM sections WHERE position_id=(SELECT position_id FROM evaluations WHERE id=?) ORDER BY sort,id").bind(id),
     env.DB.prepare(
       "SELECT i.id,i.section_id,i.kind,i.text,i.active FROM items i JOIN sections s ON s.id=i.section_id WHERE s.position_id=(SELECT position_id FROM evaluations WHERE id=?) ORDER BY i.sort,i.id"
     ).bind(id),
@@ -236,7 +236,7 @@ async function evaluationDetail(env, session, id) {
     const qs = out.filter((i) => i.kind === "question");
     const skipped = skips.has(s.id);
     sections.push({
-      id: s.id, title: s.title, skipped, items: out,
+      id: s.id, title: s.title, picker: s.picker ? 1 : 0, skipped, items: out,
       score: skipped ? null : qs.reduce((n, q) => n + (q.performed === 1 ? 1 : 0), 0),
       max: skipped ? null : qs.length,
     });
@@ -556,6 +556,8 @@ async function handle(request, env, ctx) {
        SELECT v.store_id,p.id,?1,?2,v.id,v.trainer_id,?3 FROM visits v, positions p WHERE v.id=?4 AND v.trainer_id=?5 AND v.status='open' AND p.id=?6 AND p.active=1`
     ).bind(str(b.staff_name, 100, "Staff name", { required: true }), str(b.staff_code, 40, "Staff ID") || null, session.trainer.name, +b.visit_id, session.trainer.id, +b.position_id).run();
     if (!r.meta.changes) throw bad("This visit is finished or the position is not valid");
+    // drinks are picked per evaluation: start with every drink excluded
+    await env.DB.prepare("UPDATE evaluations SET skips_json=(SELECT COALESCE(json_group_array(id),'[]') FROM sections WHERE position_id=?1 AND active=1 AND picker=1) WHERE id=?2").bind(+b.position_id, r.meta.last_row_id).run();
     return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/evals\/(\d+)$/))) {
@@ -716,7 +718,12 @@ async function handle(request, env, ctx) {
   }
   // sections
   if ((m = path.match(/^\/api\/admin\/sections\/(\d+)$/))) {
-    if (method === "PATCH") { const b = await body(); await env.DB.prepare("UPDATE sections SET title=? WHERE id=?").bind(str(b.title, 200, "Section title", { required: true }), +m[1]).run(); return json({ ok: true }); }
+    if (method === "PATCH") {
+      const b = await body();
+      if (b.picker !== undefined) await env.DB.prepare("UPDATE sections SET picker=? WHERE id=?").bind(b.picker ? 1 : 0, +m[1]).run();
+      if (b.title !== undefined) await env.DB.prepare("UPDATE sections SET title=? WHERE id=?").bind(str(b.title, 200, "Section title", { required: true }), +m[1]).run();
+      return json({ ok: true });
+    }
     if (method === "DELETE") { await env.DB.prepare("UPDATE sections SET active=0 WHERE id=?").bind(+m[1]).run(); return json({ ok: true }); }
   }
   if ((m = path.match(/^\/api\/admin\/sections\/(\d+)\/move$/)) && method === "POST") return json(await move(env, "sections", +m[1], (await body()).dir === "up" ? "up" : "down", "position_id"));

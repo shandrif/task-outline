@@ -554,7 +554,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 45 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Drip Coffee",
@@ -631,7 +632,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 45 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Espresso",
@@ -660,7 +662,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 45 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Steaming",
@@ -693,7 +696,8 @@
       "kind": "question",
       "text": "7. Clean it up the steaming wand when finished."
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cappuccino",
@@ -734,7 +738,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 45 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Latte",
@@ -775,7 +780,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 45 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Hot Signature",
@@ -840,7 +846,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cortado",
@@ -885,7 +892,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Flat White",
@@ -930,7 +938,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Piccolo",
@@ -975,7 +984,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Americano",
@@ -1012,7 +1022,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Hot Chocolate",
@@ -1053,7 +1064,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Signature Base Mix",
@@ -1094,7 +1106,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 8 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Matcha Base Mix",
@@ -1135,7 +1148,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 8 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Signature",
@@ -1172,7 +1186,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Latte",
@@ -1209,7 +1224,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Americano",
@@ -1246,7 +1262,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Cereal Latte",
@@ -1283,7 +1300,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Chocolate",
@@ -1312,7 +1330,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Passion Fruit",
@@ -1341,7 +1360,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Hibiscus",
@@ -1366,7 +1386,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Iced Matcha Latte",
@@ -1391,7 +1412,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Vanilla Cookies Ice Cream",
@@ -1420,7 +1442,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Ice Cream Chocolate",
@@ -1453,7 +1476,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Affogato",
@@ -1486,7 +1510,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Coffee Crunch",
@@ -1531,7 +1556,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 1 Minute 30 seconds"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cold Brew Bottling",
@@ -1560,7 +1586,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cold Latte Bottling",
@@ -1601,7 +1628,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cold Signature Bottling",
@@ -1642,7 +1670,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Matcha Bottling",
@@ -1671,7 +1700,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
      }
-    ]
+    ],
+    "picker": true
    },
    {
     "title": "Cereal Latte Bottling",
@@ -1712,7 +1742,8 @@
       "kind": "note",
       "text": "Note: Average Preparation time is 2 Minutes"
      }
-    ]
+    ],
+    "picker": true
    }
   ]
  },

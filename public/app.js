@@ -459,6 +459,7 @@ async function evalForm(ev) {
     r.num.textContent = done ? "✓" : r.idx;
     r.meta.textContent = na ? "Not applicable" : `${r.a}/${n} answered · score ${r.sc}/${n}`;
     r.naBtn.textContent = na ? "Include section" : "Not applicable";
+    if (r.sec.picker) r.el.hidden = na;      // drinks that are not selected are hidden and excluded
   }
   function paintTotals() {
     let a = 0, total = 0, score = 0;
@@ -484,7 +485,7 @@ async function evalForm(ev) {
       calc(r); paintSection(r); paintTotals(); schedule();
     } }, label);
     r.body = h("div", { class: "sec-b" },
-      h("div", { class: "sec-tools no-print" }, allBtn("trained", "All trained: Yes"), allBtn("performed", "All performed: Yes"), r.naBtn),
+      h("div", { class: "sec-tools no-print" }, allBtn("trained", "All trained: Yes"), allBtn("performed", "All performed: Yes"), !r.sec.picker && r.naBtn),
       h("div", { class: "colhead" }, h("span", {}, "Task"), h("span", {}, "Received training"), h("span", {}, "Performed")),
       r.sec.items.map((i) => {
         if (i.kind === "heading") { counter = 0; return h("div", { class: "heading" }, i.text); }
@@ -560,8 +561,38 @@ async function evalForm(ev) {
     for (let i = 0; i < vis.length; i += 3) { vis.slice(i, i + 3).forEach((r) => toggleSection(r, open)); if (open) await new Promise(requestAnimationFrame); }
   } }, "Expand / collapse all");
 
+  // ---- drink picker: only the drinks selected here are shown and scored; the rest are excluded automatically ----
+  const drinks = refs.filter((r) => r.sec.picker);
+  const pickerCard = drinks.length ? (() => {
+    const chips = h("div", { class: "chips" }), results = h("div", { class: "pick-results" });
+    const selected = () => drinks.filter((r) => !skip.has(r.sec.id));
+    const q = h("input", { type: "search", class: "flt-search", style: "flex:1;max-width:none", placeholder: "Search a drink, e.g. Signature, Latte, Matcha…", "aria-label": "Search drinks", autocomplete: "off", oninput: () => showResults(), onfocus: () => showResults() });
+    const addDrink = (r, open) => { skip.delete(r.sec.id); skipDirty = true; paintSection(r); paintTotals(); if (open) { toggleSection(r, true); r.el.scrollIntoView({ block: "start", behavior: "smooth" }); } schedule(); drawChips(); };
+    const removeDrink = async (r) => {
+      if (r.a > 0 && !(await confirmBox("Remove this drink?", `${r.sec.title} has ${r.a} answer${r.a === 1 ? "" : "s"}. It will be left out of this evaluation and its score (the answers stay saved if you add it back).`, "Remove", true))) return;
+      skip.add(r.sec.id); skipDirty = true; paintSection(r); paintTotals(); schedule(); drawChips();
+    };
+    function drawChips() {
+      const sel = selected();
+      chips.replaceChildren(...(sel.length ? sel.map((r) => h("span", { class: "chip drink" }, h("a", { href: "#", onclick: (e) => { e.preventDefault(); toggleSection(r, true); r.el.scrollIntoView({ block: "start", behavior: "smooth" }); } }, r.sec.title), h("button", { type: "button", "aria-label": `Remove ${r.sec.title}`, onclick: () => removeDrink(r) }, "✕")))
+        : [h("span", { class: "muted small" }, "No drink selected yet — only the questions above count. Search and pick the drink you are evaluating.")]));
+      showResults();
+    }
+    function showResults() {
+      const term = q.value.trim().toLowerCase();
+      const pool = drinks.filter((r) => skip.has(r.sec.id) && (!term || r.sec.title.toLowerCase().includes(term)));
+      results.replaceChildren(
+        term && pool.length > 1 && h("button", { type: "button", class: "btn ghost sm", onclick: () => { pool.forEach((r) => addDrink(r, false)); q.value = ""; showResults(); } }, `Add all ${pool.length} matching “${q.value.trim()}”`),
+        ...pool.slice(0, 40).map((r) => h("button", { type: "button", class: "pick-opt", onclick: () => { addDrink(r, true); showResults(); } }, "+ ", r.sec.title)),
+        term && !pool.length && h("div", { class: "muted small" }, "No drink found (or it is already selected)."));
+    }
+    drawChips();
+    return h("div", { class: "card no-print pick-card" }, h("h2", {}, "Drinks being evaluated"),
+      h("p", { class: "muted small", style: "margin:4px 0 10px" }, "Pick only the drinks you are checking. Every other drink is left out automatically — it is not shown, not required and not scored."),
+      h("div", { class: "row", style: "flex-wrap:nowrap" }, q), results, chips);
+  })() : null;
   const found = h("span", { class: "muted small" });
-  const finder = refs.length > 10 && h("div", { class: "card no-print", style: "padding:12px 16px" }, h("div", { class: "row", style: "flex-wrap:nowrap" },
+  const finder = refs.length > 10 && !drinks.length && h("div", { class: "card no-print", style: "padding:12px 16px" }, h("div", { class: "row", style: "flex-wrap:nowrap" },
     h("input", { type: "search", class: "flt-search", style: "flex:1;max-width:none", placeholder: "Search drinks or sections…", "aria-label": "Search drinks or sections", oninput: (e) => {
       const q = e.target.value.trim().toLowerCase(); const hits = [];
       for (const r of refs) { const hit = !q || r.sec.title.toLowerCase().includes(q) || r.sec.items.some((i) => i.text.toLowerCase().includes(q)); r.el.hidden = !hit; if (hit) hits.push(r); }
@@ -571,7 +602,7 @@ async function evalForm(ev) {
   window.addEventListener("beforeunload", () => { if (dirty.size) flush(); }, { once: true });
   return shell(h("div", {},
     pageHead(`Evaluating ${ev.staff_name}`, `${ev.position_name}${ev.staff_code ? " · ID " + ev.staff_code : ""} · ${ev.store_name}. Answers save automatically.`, h("a", { class: "btn ghost sm", href: `#/visit/${ev.visit_id}` }, "← Visit"), allOpen, del),
-    bar, finder, secEls,
+    bar, finder, secEls.map((el, i) => (pickerCard && i === refs.findIndex((r) => r.sec.picker) ? [pickerCard, el] : el)),
     h("div", { class: "card no-print" }, h("h2", {}, "Areas for improvement"), h("p", { class: "muted small", style: "margin:4px 0 10px" }, "Note what this person should work on and any training they need. It appears on their result and in the admin reports."), notes),
     h("div", { class: "row no-print", style: "justify-content:flex-end;margin-top:8px" }, submitBtns[1])), "#/");
 }
@@ -910,6 +941,7 @@ async function adminQuestions(posId) {
   if (!positions.length) return shell(h("div", {}, pageHead("Questions"), addPositionBox()), "#/admin/questions");
   const cur = positions.find((p) => p.id == posId) || positions[0];
   const tree = await api(`/positions/${cur.id}`);
+  const pickerPos = tree.sections.some((s) => s.picker);
   const run = guarded;
 
   const askText = (title, initial = "", multiline = false) => {
@@ -936,6 +968,7 @@ async function adminQuestions(posId) {
     return h("section", { class: "qe-sec" },
       h("header", {}, h("h3", {}, `${idx + 1}. ${s.title}`), h("span", { class: "muted small" }, `${n} question${n === 1 ? "" : "s"}`),
         h("button", { class: "icon", title: "Rename section", onclick: run(async () => { const v = await askText("Rename section", s.title); if (!v) throw new Error("No changes"); await api(`/admin/sections/${s.id}`, { method: "PATCH", body: { title: v } }); }) }, "✎"),
+        pickerPos && h("button", { class: "chip" + (s.picker ? " drink" : ""), title: "Drinks are picked per evaluation: only the selected drinks are shown and scored. Click to switch.", onclick: run(() => api(`/admin/sections/${s.id}`, { method: "PATCH", body: { picker: !s.picker } })) }, s.picker ? "Drink (picked)" : "Always shown"),
         h("button", { class: "icon", title: "Move up", onclick: run(() => api(`/admin/sections/${s.id}/move`, { method: "POST", body: { dir: "up" } })) }, "↑"),
         h("button", { class: "icon", title: "Move down", onclick: run(() => api(`/admin/sections/${s.id}/move`, { method: "POST", body: { dir: "down" } })) }, "↓"),
         h("button", { class: "icon del", title: "Remove section", onclick: run(async () => { if (!(await confirmBox("Remove this section?", `“${s.title}” and its ${n} questions will no longer appear in new evaluations.`, "Remove", true))) throw new Error("Cancelled"); await api(`/admin/sections/${s.id}`, { method: "DELETE" }); }) }, "✕")),
