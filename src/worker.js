@@ -353,7 +353,7 @@ async function aggregate(env, from, to, trainerId = null) {
     totals: {
       stores: byStore.length, trainers: misc.results[0].approved, pending: misc.results[0].pending, drafts: misc.results[0].drafts,
       visits: tot.visits, stores_visited: byStore.filter((x) => x.visits > 0).length, evaluations: tot.evaluations,
-      avg_pct: r1(tot.sc, tot.mx), trained_pct: r1(tot.tr, tot.mx),
+      avg_pct: r1(tot.sc, tot.mx), trained_pct: r1(tot.tr, tot.mx), score: tot.sc, max: tot.mx, trained: tot.tr,
     },
     byTrainer: [...T.values()].map(({ stores: set, last_visit_at, ...t }) => ({ ...t, stores_visited: set.size })),
     byPosition: [...P.values()].map((p) => ({ id: p.id, name: p.name, evaluations: p.evaluations, avg_pct: r1(p.sc, p.mx) })),

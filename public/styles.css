@@ -387,3 +387,12 @@ body.nav-live .top .nav { display: none; }
 .sign .sigline { border-bottom: 1.5px solid var(--ink); height: 44px; margin-bottom: 4px; }
 @media print { .subnav { display: none; } .svview .card { box-shadow: none; } }
 .card .grid input[type=number], .card .grid input[type=date], .card .grid input[type=time] { width: 100%; }
+
+/* clickable number tiles */
+.kpi.click { cursor: pointer; position: relative; transition: transform .15s, box-shadow .15s; }
+.kpi.click:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(29,27,23,.1); }
+.kpi.click:focus-visible { outline: 2px solid var(--deep, #2B8A74); outline-offset: 2px; }
+.kpi.click::after { content: "i"; position: absolute; top: 10px; right: 12px; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid currentColor; opacity: .45; font: italic 700 12px/15px Georgia, serif; text-align: center; }
+.explain .ex-head { font-size: 26px; font-weight: 900; line-height: 1.15; }
+.modal:has(.explain) { max-width: min(680px, 94vw); }
+.modal .explain { gap: 12px; }

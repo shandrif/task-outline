@@ -37,7 +37,8 @@ function breakdown(rows, groups, { getV, cell = avgCell, valueLabel = "Avg verif
   draw();
   return h("div", { class: "card" }, h("h2", {}, "View by"), tabs, holder);
 }
-const kpi = (cls, v, l) => h("div", { class: "kpi " + cls }, h("div", { class: "v" }, v), h("div", { class: "l" }, l));
+const kpi = (cls, v, l, info) => tile(cls, v, l, info);
+const recRow = (r) => [r.name || "—", r.emp_id || "", r.created_by_name || "", fmtPct(r.pct)];
 const emptyCard = (t) => h("div", { class: "card" }, h("p", { class: "muted", style: "margin:0" }, t));
 
 // ================= records modules =================
@@ -86,8 +87,25 @@ async function moduleView(key) {
     const scored = shown.filter((r) => r.pct != null);
     const avg = scored.length ? r1(scored.reduce((n, r) => n + r.pct, 0) / scored.length) : null;
     const strong = scored.filter((r) => r.pct >= GOOD).length, low = scored.filter((r) => r.pct < WARN).length;
-    const tiles = [kpi("tealk", shown.length, "Records in this period"), kpi("", fmtPct(avg), "Average verification %"), kpi("tank", strong, `Strong · ${GOOD}% or more`), kpi("", low, `Needs attention · below ${WARN}%`)];
-    if (key === "onboarding") { const inTraining = shown.filter((r) => r.training_start && !r.training_end).length; tiles[2] = kpi("tank", inTraining, "Currently in training"); tiles[3] = kpi("", shown.length - inTraining, "Training finished or not started"); }
+    const per = periodText(), what = kind ? kindLabel[kind] : cfg.title, unscored = shown.length - scored.length;
+    const head = ["Name", "Employee ID", "Entered by", "Verification %"];
+    const lowest = [...scored].sort((a, b) => a.pct - b.pct);
+    const tiles = [
+      kpi("tealk", shown.length, "Records in this period", { title: "Records", headline: `${shown.length} record${shown.length === 1 ? "" : "s"}`,
+        text: [`Every ${what} record entered in ${per}${admin ? "" : " by you"} is counted once.`],
+        sections: [...(multi && !kind ? [{ title: "By type", head: ["Type", "Records"], rows: cfg.kinds.map((k) => [k.label, shown.filter((r) => r.kind === k.key).length]) }] : []), ...(admin ? [{ title: "Entered by", head: ["Trainer", "Records"], rows: [...rollup(shown, "created_by_name").sort((a, b) => b.n - a.n).map((g) => [g.name, g.n])] }] : [])] }),
+      kpi("", fmtPct(avg), "Average verification %", { title: "Average verification %", headline: avg == null ? "No scores yet" : `${avg}%`,
+        text: [avg == null ? "None of the records has a verification % yet." : `This is the average of the verification % of the ${scored.length} record${scored.length === 1 ? "" : "s"} that have one.${unscored ? ` ${unscored} record${unscored === 1 ? " has" : "s have"} no score yet (for example onboarding still in progress) and ${unscored === 1 ? "is" : "are"} left out.` : ""}`],
+        sections: [{ title: "Lowest first", head, rows: lowest.map(recRow) }] }),
+      kpi("tank", strong, `Strong · ${GOOD}% or more`, { title: "Strong results", headline: `${strong} of ${scored.length} scored`, text: [`Records with a verification % of ${GOOD} or more.`], sections: [{ title: "Who", head, rows: lowest.filter((r) => r.pct >= GOOD).reverse().map(recRow) }] }),
+      kpi("", low, `Needs attention · below ${WARN}%`, { title: "Needs attention", headline: `${low} of ${scored.length} scored`, text: [`Records with a verification % below ${WARN}. These are the people or products that need more training.`], sections: [{ title: "Who", head, rows: lowest.filter((r) => r.pct < WARN).map(recRow), empty: "Nobody is below the line." }] }),
+    ];
+    if (key === "onboarding") {
+      const inT = shown.filter((r) => r.training_start && !r.training_end), rest = shown.filter((r) => !(r.training_start && !r.training_end));
+      const trow = (r) => [r.name, r.emp_id, kindLabel[r.kind], r.training_start ? fmtDay(r.training_start) : "—", r.training_end ? fmtDay(r.training_end) : "—"];
+      tiles[2] = kpi("tank", inT.length, "Currently in training", { title: "Currently in training", headline: `${inT.length} employee${inT.length === 1 ? "" : "s"}`, text: ["A training start date is entered but no end date yet."], sections: [{ title: "Who", head: ["Name", "Employee ID", "Type", "Started", "Ended"], rows: inT.map(trow) }] });
+      tiles[3] = kpi("", rest.length, "Training finished or not started", { title: "Finished or not started", headline: `${rest.length} employee${rest.length === 1 ? "" : "s"}`, text: ["Either the training has an end date, or no start date has been entered yet."], sections: [{ title: "Who", head: ["Name", "Employee ID", "Type", "Started", "Ended"], rows: rest.map(trow) }] });
+    }
 
     const cols = columns();
     const g = grid({
@@ -201,10 +219,25 @@ async function homeView() {
     });
   }
   const entries = tot(trainingRecs, "n") + d.sv.n + d.verify.evaluations;
+  const per = periodText();
+  const modRows = ["onboarding", "npd", "coaching", "development"].map((m) => [modules[m].title, tot(recs(m), "n"), tot(recs(m), "scored"), fmtPct(avgOf(recs(m)))]);
+  const masterTiles = () => [
+    kpi("tealk", entries, "Entries in this period", { title: "Entries", headline: `${entries} in ${per}`, text: ["Everything entered in this period, added together: records in Onboarding, NPD, Coaching and People development, plus store visit reports and staff evaluations (Verification)."],
+      sections: [{ title: "By area", head: ["Area", "Entries"], rows: [...modRows.map((r) => [r[0], r[1]]), ["Store visit reports", d.sv.n], ["Staff evaluations (Verification)", d.verify.evaluations]] }] }),
+    kpi("", fmtPct(avgOf(trainingRecs)), "Avg verification % · Onboarding, NPD, Coaching, People dev.", { title: "Average verification %", headline: avgOf(trainingRecs) == null ? "No scores yet" : `${avgOf(trainingRecs)}%`,
+      text: [`The average of every verification % entered in ${per} across Onboarding, NPD, Training/Coaching and People development (${tot(trainingRecs, "scored")} scored record${tot(trainingRecs, "scored") === 1 ? "" : "s"}). Verification (SBS) and Store visit scores are separate.`],
+      sections: [{ title: "By area", head: ["Area", "Records", "With a score", "Average"], rows: modRows }] }),
+    kpi("tank", fmtPct(verAvg), "Verification (SBS) average score", { title: "Verification (SBS) average", headline: verAvg == null ? "No score yet" : `${verAvg}%`,
+      text: [verAvg == null ? "No staff evaluation was submitted in this period." : `Across ${d.verify.evaluations} submitted staff evaluation${d.verify.evaluations === 1 ? "" : "s"} in ${per}, ${d.verify.score} of ${d.verify.max} tasks were performed correctly (${d.verify.score} ÷ ${d.verify.max} = ${verAvg}%).`],
+      sections: [{ title: "Behind the number", head: ["", ""], rows: [["Store visits (Verification)", d.verify.visits], ["Different stores", d.verify.stores], ["Staff evaluations", d.verify.evaluations]] }] }),
+    kpi("", svAvg == null ? "—" : `${svAvg}/5`, "Store visit average score", { title: "Store visit average score", headline: svAvg == null ? "No score yet" : `${svAvg} out of 5`,
+      text: [svAvg == null ? "No store visit report with an overall score was saved in this period." : `The average of the overall score (out of 5) on ${d.sv.scored} store visit report${d.sv.scored === 1 ? "" : "s"} in ${per}.${d.sv.n > d.sv.scored ? ` ${d.sv.n - d.sv.scored} report${d.sv.n - d.sv.scored === 1 ? " has" : "s have"} no overall score and ${d.sv.n - d.sv.scored === 1 ? "is" : "are"} left out.` : ""}`],
+      sections: [{ title: "Behind the number", head: ["", ""], rows: [["Reports", d.sv.n], ["Different stores", d.sv.stores], ["Follow-up visits needed", d.sv.follow_ups]] }] }),
+  ];
   return shell(h("div", {},
     pageHead(admin ? "Master dashboard" : "My dashboard", admin ? "All six areas at a glance. Open any card for its own dashboard." : "Your own entries across all six areas.", rangeBar()),
     admin && d.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${d.pending} trainer${d.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
-    h("div", { class: "grid g4" }, kpi("tealk", entries, "Entries in this period"), kpi("", fmtPct(avgOf(trainingRecs)), "Avg verification % · Onboarding, NPD, Coaching, People dev."), kpi("tank", fmtPct(verAvg), "Verification (SBS) average score"), kpi("", svAvg == null ? "—" : `${svAvg}/5`, "Store visit average score")),
+    h("div", { class: "grid g4" }, masterTiles()),
     h("div", { class: "grid g3 mcards", style: "margin-top:16px" }, MODULE_ORDER.map(card)),
     team && h("div", { class: "card" }, h("h2", {}, "Team activity"), h("p", { class: "muted small" }, "What each trainer entered in this period."), team.el),
     h("div", { class: "card" }, h("h2", {}, "Latest activity"), recent.length ? recent : h("p", { class: "muted" }, "Nothing yet."))), "#/home");
@@ -233,9 +266,23 @@ async function svList() {
       ...g.rows().map((r) => [r.report, r.visit_date, r.store_code, r.store_name, r.area_manager || "", r.rom || "", r.region || "", r.city || "", r.trainer_name || "", r.branch_manager || "", r.visit_type || "", r.readiness_pct ?? "", r.quality_avg ?? "", r.overall_score ?? "", r.overall_rating || "", r.follow_up ? "Yes" : "No"])], "Store_Visit_Reports.xlsx", "Store visits") }, "Export to Excel")],
   });
   const groups = [["store", "Store"], ["area_manager", "Area manager"], ["rom", "ROM"], ["region", "Region"], ["city", "City"], ["visit_type", "Visit type"], ...(admin ? [["trainer_name", "Visited by"]] : [])];
+  const per = periodText(), nStores = new Set(rows.map((r) => r.store_id)).size, rrow = (r) => [r.report, fmtDay(r.visit_date), r.store, r.trainer_name || "", r.overall_score == null ? "—" : `${r.overall_score}/5`, r.readiness_pct == null ? "—" : `${r.readiness_pct}%`];
+  const rhead = ["Report", "Date", "Store", "Visited by", "Overall", "Readiness"];
+  const svTiles = () => [
+    kpi("tealk", rows.length, `Reports · ${nStores} store${nStores === 1 ? "" : "s"}`, { title: "Reports", headline: `${rows.length} report${rows.length === 1 ? "" : "s"} on ${nStores} store${nStores === 1 ? "" : "s"}`,
+      text: [`Every store visit report saved in ${per}${admin ? "" : " by you"}. A store reported twice counts as two reports but one store.`], sections: [{ title: "Reports per store", head: ["Store", "Reports"], rows: rollup(rows, "store").sort((a, b) => b.n - a.n).map((g) => [g.name, g.n]) }] }),
+    kpi("", avg == null ? "—" : `${avg}/5`, "Average overall score", { title: "Average overall score", headline: avg == null ? "No score yet" : `${avg} out of 5`,
+      text: [avg == null ? "No report has an overall score." : `The average of the overall score (out of 5) on the ${scored.length} report${scored.length === 1 ? "" : "s"} that have one${rows.length > scored.length ? `; ${rows.length - scored.length} without a score ${rows.length - scored.length === 1 ? "is" : "are"} left out` : ""}.`],
+      sections: [{ title: "Lowest scores first", head: rhead, rows: [...scored].sort((a, b) => a.overall_score - b.overall_score).map(rrow) }] }),
+    kpi("tank", fmtPct(ravg), "Average store readiness", { title: "Average store readiness", headline: ravg == null ? "No data yet" : `${ravg}%`,
+      text: [ravg == null ? "No report has answered readiness checkpoints." : `For each report, readiness is the share of “Yes” among the checkpoints answered Yes or No. This is the average of that share over ${rd.length} report${rd.length === 1 ? "" : "s"}.`],
+      sections: [{ title: "Lowest readiness first", head: rhead, rows: [...rd].sort((a, b) => a.readiness_pct - b.readiness_pct).map(rrow) }] }),
+    kpi("", rows.filter((r) => r.follow_up).length, "Follow-up visits needed", { title: "Follow-up visits needed", headline: `${rows.filter((r) => r.follow_up).length} report${rows.filter((r) => r.follow_up).length === 1 ? "" : "s"}`,
+      text: ["Reports where the trainer marked “Follow-up visit required”."], sections: [{ title: "Which reports", head: rhead, rows: rows.filter((r) => r.follow_up).map(rrow), empty: "No follow-up is needed." }] }),
+  ];
   return shell(h("div", {},
     pageHead("Store Visit Reports", "Branch readiness, product quality and team performance.", rangeBar(), !admin && h("a", { class: "btn teal", href: "#/sv/new" }, "+ New report")),
-    h("div", { class: "grid g4" }, kpi("tealk", rows.length, `Reports · ${new Set(rows.map((r) => r.store_id)).size} stores`), kpi("", avg == null ? "—" : `${avg}/5`, "Average overall score"), kpi("tank", fmtPct(ravg), "Average store readiness"), kpi("", rows.filter((r) => r.follow_up).length, "Follow-up visits needed")),
+    h("div", { class: "grid g4" }, svTiles()),
     rows.length > 0 && breakdown(rows, groups, { getV: (r) => r.overall_score, cell: scoreCell, valueLabel: "Avg overall score" }),
     h("div", { class: "card" }, h("h2", {}, "Reports"), g.el)), "#/sv");
 }

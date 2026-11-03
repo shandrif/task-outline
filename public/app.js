@@ -184,6 +184,27 @@ function shell(content, active) {
     h("main", {}, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content));
 }
 
+
+// ---------- clickable number tiles: click to see how a number is worked out ----------
+const periodText = () => ({ all: "all time", today: "today", 7: "the last 7 days", 30: "the last 30 days", month: "this month" })[range.preset] || `${range.from || "the start"} to ${range.to || "today"}`;
+function explain(info) {
+  const section = (s) => h("div", {}, h("div", { class: "small muted", style: "font-weight:700;margin-bottom:6px" }, s.title),
+    s.rows.length ? h("div", { class: "table-wrap", style: "max-height:240px;overflow:auto" }, h("table", { class: "dtable" }, s.head && h("thead", {}, h("tr", {}, s.head.map((x) => h("th", {}, x)))),
+      h("tbody", {}, s.rows.slice(0, 300).map((r) => h("tr", {}, r.map((c) => h("td", {}, c))))))) : h("p", { class: "muted small", style: "margin:0" }, s.empty || "Nothing to show."),
+    s.rows.length > 300 && h("p", { class: "muted small", style: "margin:6px 0 0" }, `Showing the first 300 of ${s.rows.length}.`));
+  return modal(info.title, h("div", { class: "stack explain" }, h("div", { class: "ex-head" }, info.headline), (info.text || []).map((p) => h("p", { style: "margin:0" }, p)), (info.sections || []).map(section)),
+    (close) => [h("button", { class: "btn teal", onclick: () => close(true) }, "Got it")]);
+}
+function tile(cls, v, l, info) {
+  const el = h("div", { class: `kpi ${cls}${info ? " click" : ""}`, ...(info ? { role: "button", tabindex: 0, title: "Click to see how this number is worked out" } : {}) }, h("div", { class: "v" }, v), h("div", { class: "l" }, l));
+  if (info) {
+    const go = () => explain(typeof info === "function" ? info() : info);
+    el.addEventListener("click", go);
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  }
+  return el;
+}
+
 function pageHead(title, sub, ...right) {
   return h("div", { class: "page-head" }, h("div", {}, h("h1", {}, title), sub && h("p", {}, sub), h("div", { class: "tan-bar" })), h("div", { class: "row no-print" }, right));
 }
@@ -255,6 +276,25 @@ async function trainerHome() {
   const stores = my.stores, evals = my.evaluations;
   const avg = pct(my.sum_score, my.sum_max);
   const open = visits.filter((v) => v.status === "open");
+  const recent = visits.filter((v) => daysSince(v.started_at) <= 30);
+  const myTiles = () => {
+    const byStore = new Map(); for (const v of recent) { const k = `${v.store_code} · ${v.store_name}`; byStore.set(k, (byStore.get(k) || 0) + 1); }
+    const done = recent.filter((v) => v.evals > 0);
+    return [
+      tile("tealk", my.visits, "Visits made · last 30 days", { title: "Your visits", headline: `${my.visits} visit${my.visits === 1 ? "" : "s"} in the last 30 days`,
+        text: ["Every time you start a visit at a store it counts as one visit. If you go back to the same store, that is another visit — so this can be higher than the number of different stores."],
+        sections: [{ title: "Your visits", head: ["Date", "Store", "Staff evaluated"], rows: recent.map((v) => [fmtDateTime(v.started_at), `${v.store_code} · ${v.store_name}`, v.evals]) }] }),
+      tile("", stores, "Different stores · last 30 days", { title: "Different stores", headline: `${stores} different store${stores === 1 ? "" : "s"} in the last 30 days`,
+        text: [`Each store is counted once, however many times you visited it. You made ${my.visits} visit${my.visits === 1 ? "" : "s"} to ${stores} store${stores === 1 ? "" : "s"}${my.visits > stores ? `, so ${my.visits - stores} ${my.visits - stores === 1 ? "was a repeat visit" : "were repeat visits"}` : ""}.`],
+        sections: [{ title: "Stores you visited", head: ["Store", "Visits"], rows: [...byStore].sort((a, b) => b[1] - a[1]) }] }),
+      tile("tank", evals, "Staff evaluations · last 30 days", { title: "Staff evaluations", headline: `${evals} completed evaluation${evals === 1 ? "" : "s"}`,
+        text: ["Only evaluations you have submitted are counted — drafts are not. Evaluating the same person on two different visits counts twice."],
+        sections: [{ title: "Visits with evaluations", head: ["Date", "Store", "Evaluations"], rows: done.map((v) => [fmtDateTime(v.started_at), `${v.store_code} · ${v.store_name}`, v.evals]) }] }),
+      tile("", fmtPct(avg), "Average score · last 30 days", { title: "Average score", headline: avg == null ? "No score yet" : `${avg}%`,
+        text: [avg == null ? "Submit an evaluation to see your average." : `Across your submitted evaluations in the last 30 days, ${my.sum_score} of ${my.sum_max} tasks were performed correctly (${my.sum_score} ÷ ${my.sum_max} = ${avg}%).`],
+        sections: [{ title: "Average per visit", head: ["Date", "Store", "Average"], rows: recent.filter((v) => v.sum_max).map((v) => [fmtDateTime(v.started_at), `${v.store_code} · ${v.store_name}`, fmtPct(pct(v.sum_score, v.sum_max))]) }] }),
+    ];
+  };
   const g = grid({
     rows: visits.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null })),
     searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.area_manager || ""}`,
@@ -266,11 +306,7 @@ async function trainerHome() {
   });
   return shell(h("div", {},
     pageHead(`Hello, ${session.trainer.name.split(" ")[0]}`, "Visit a store, evaluate the team, and note what needs more training.", h("a", { class: "btn teal", href: "#/visit/new" }, "+ Start store visit")),
-    h("div", { class: "grid g4", style: "margin-bottom:16px" },
-      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, my.visits), h("div", { class: "l" }, "Store visits · last 30 days")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, stores), h("div", { class: "l" }, "Different stores · last 30 days")),
-      h("div", { class: "kpi tank" }, h("div", { class: "v" }, evals), h("div", { class: "l" }, "Staff evaluations · last 30 days")),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(avg)), h("div", { class: "l" }, "Average score · last 30 days"))),
+    h("div", { class: "grid g4", style: "margin-bottom:16px" }, myTiles()),
     open.length > 0 && h("div", { class: "card" }, h("h2", {}, "Continue where you left off"),
       h("div", { class: "grid g3", style: "margin-top:12px" }, open.map((v) => h("a", { class: "pos-card", href: `#/visit/${v.id}`, style: "text-decoration:none;color:inherit" },
         h("b", {}, v.store_name), h("span", {}, `${v.store_code} · ${v.city || ""} · started ${fmtDateTime(v.started_at)}`))))),
@@ -635,6 +671,28 @@ async function adminHome() {
   const cov = pct(t.stores_visited, t.stores);
   const stores = d.byStore.map((s) => ({ ...s, avg: s.sum_max ? pct(s.sum_score, s.sum_max) : null }));
 
+  const adminTiles = () => {
+    const per = periodText();
+    const repeat = t.visits - t.stores_visited;
+    const trainerRows = d.byTrainer.filter((x) => x.visits > 0).sort((a, b) => b.visits - a.visits).map((x) => [x.name, x.visits, x.stores_visited]);
+    const visited = stores.filter((s) => s.visits > 0).sort((a, b) => b.visits - a.visits), not = stores.filter((s) => !s.visits);
+    const posRows = d.byPosition.filter((p) => p.evaluations > 0).map((p) => [p.name, p.evaluations, fmtPct(p.avg_pct)]);
+    return [
+      tile("tealk", t.visits, `Visits made · across ${t.stores_visited} store${t.stores_visited === 1 ? "" : "s"}`, { title: "Visits made", headline: `${t.visits} visit${t.visits === 1 ? "" : "s"} to ${t.stores_visited} different store${t.stores_visited === 1 ? "" : "s"}`,
+        text: [`This counts every visit a trainer started in ${per}. A store visited twice — by the same trainer or by two different trainers — counts as two visits, so visits can be higher than stores.`, repeat > 0 ? `${t.visits} visits − ${t.stores_visited} different stores = ${repeat} repeat visit${repeat === 1 ? "" : "s"}.` : "Every visit was to a different store.", `${t.trainers} trainer${t.trainers === 1 ? " is" : "s are"} approved.`],
+        sections: [{ title: "Visits per trainer", head: ["Trainer", "Visits", "Different stores"], rows: trainerRows }, { title: "Stores visited more than once", head: ["Store", "Visits"], rows: visited.filter((s) => s.visits > 1).map((s) => [`${s.username} · ${s.name}`, s.visits]), empty: "No store was visited more than once." }] }),
+      tile("", `${t.stores_visited}/${t.stores}`, `Different stores visited · ${fmtPct(cov)} coverage`, { title: "Stores visited", headline: `${t.stores_visited} of ${t.stores} stores (${fmtPct(cov)})`,
+        text: [`${t.stores} is every active store in the Stores list. A store counts as visited when at least one trainer started a visit there in ${per} — however many visits it had, it is counted once.`, `${not.length} store${not.length === 1 ? " has" : "s have"} not been visited in this period. Use the period selector at the top to look at a different range.`],
+        sections: [{ title: `Not visited in ${per} (${not.length})`, head: ["Store", "Area manager", "City"], rows: not.map((s) => [`${s.username} · ${s.name}`, s.area_manager || "", s.city || ""]), empty: "Every store was visited." }, { title: `Visited (${visited.length})`, head: ["Store", "Visits", "Last visit"], rows: visited.map((s) => [`${s.username} · ${s.name}`, s.visits, fmtDate(s.last_visit)]) }] }),
+      tile("tank", t.evaluations, `Staff evaluations · ${t.drafts} unsubmitted`, { title: "Staff evaluations", headline: `${t.evaluations} submitted evaluation${t.evaluations === 1 ? "" : "s"}`,
+        text: [`Each submitted staff evaluation in ${per} counts once. ${t.drafts} draft${t.drafts === 1 ? " is" : "s are"} still being filled in and ${t.drafts === 1 ? "is" : "are"} not counted. Evaluating the same person on two visits counts twice.`],
+        sections: [{ title: "By position", head: ["Position", "Evaluations", "Average"], rows: posRows }, { title: "By trainer", head: ["Trainer", "Evaluations", "Staff evaluated"], rows: d.byTrainer.filter((x) => x.evaluations > 0).sort((a, b) => b.evaluations - a.evaluations).map((x) => [x.name, x.evaluations, x.staff_evaluated]) }] }),
+      tile("", fmtPct(t.avg_pct), `Average score · ${fmtPct(t.trained_pct)} trained`, { title: "Average score", headline: t.avg_pct == null ? "No score yet" : `${t.avg_pct}%`,
+        text: [t.avg_pct == null ? "No evaluation has been submitted in this period." : `Across all submitted evaluations in ${per}, ${t.score} of ${t.max} tasks were performed correctly (${t.score} ÷ ${t.max} = ${t.avg_pct}%).`, t.trained_pct == null ? "" : `${t.trained} of ${t.max} tasks were marked "received training" (${t.trained_pct}%).`].filter(Boolean),
+        sections: [{ title: "Average by position", head: ["Position", "Evaluations", "Average"], rows: posRows }, { title: "Lowest areas right now", head: ["Section", "Position", "Performed"], rows: d.weakest.map((w) => [w.section, w.position, fmtPct(w.pct)]) }] }),
+    ];
+  };
+
   const trainers = d.byTrainer.filter((x) => x.employee_id !== "LEGACY" ? x.status !== "pending" : x.visits > 0).map((x) => ({ ...x, avg: x.sum_max ? pct(x.sum_score, x.sum_max) : null, coverage: pct(x.stores_visited, t.stores), trainedPct: x.sum_max ? pct(x.sum_trained, x.sum_max) : null }));
   const trainerGrid = grid({
     rows: trainers, searchIn: (x) => `${x.name} ${x.employee_id} ${x.designation}`, filters: [{ key: "designation", label: "designations" }], sort: { key: "visits", dir: -1 },
@@ -679,11 +737,7 @@ async function adminHome() {
   return shell(h("div", {},
     pageHead("Dashboard", "Trainer visits to stores, staff evaluated, and where more training is needed.", rangeBar()),
     t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
-    h("div", { class: "grid g4" },
-      h("div", { class: "kpi tealk" }, h("div", { class: "v" }, t.visits), h("div", { class: "l" }, `Store visits · ${t.trainers} active trainer${t.trainers === 1 ? "" : "s"}`)),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, `${t.stores_visited}/${t.stores}`), h("div", { class: "l" }, `Stores visited · ${fmtPct(cov)} coverage`)),
-      h("div", { class: "kpi tank" }, h("div", { class: "v" }, t.evaluations), h("div", { class: "l" }, `Staff evaluations · ${t.drafts} unsubmitted`)),
-      h("div", { class: "kpi" }, h("div", { class: "v" }, fmtPct(t.avg_pct)), h("div", { class: "l" }, `Average score · ${fmtPct(t.trained_pct)} trained`))),
+    h("div", { class: "grid g4" }, adminTiles()),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate in the latest evaluations of this period."),
