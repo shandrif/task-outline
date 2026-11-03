@@ -31,7 +31,7 @@ export const MODULES = {
     kinds: [{ key: "", label: "NPD", fields: [
       T("name", "Employee name", { required: true }), T("emp_id", "Employee ID", { required: true }),
       T("store", "Store", { ...STORE_FILL, fills: ["am", "rom"], required: true }), T("am", "Area manager"), T("rom", "ROM"),
-      T("product_name", "Product name", { required: true }), T("pct", "Verification %", { type: "pct", required: true }),
+      T("product_name", "Product name", { type: "product", required: true }), T("pct", "Verification %", { type: "pct", required: true }),
     ] }],
   },
   coaching: {
@@ -68,6 +68,57 @@ export async function moduleRoutes(c) {
   };
 
   if (path === "/api/modules" && method === "GET") return json({ modules: MODULES, sv: SV_CONFIG });
+
+  // ---------- NPD product names: set by the admin only ----------
+  const needAdmin = () => { if (!isAdmin) throw new HttpError(403, "Only the admin can change the product list"); };
+  const prodName = (v) => { const s = str(v, 80, "Product name", { required: true }).replace(/\s+/g, " "); return s; };
+  if (path === "/api/npd-products" && method === "GET") {
+    const rows = (await env.DB.prepare(
+      `SELECT p.id, p.name, p.active, (SELECT COUNT(*) FROM records r WHERE r.module='npd' AND lower(json_extract(r.data,'$.product_name'))=lower(p.name)) uses
+       FROM npd_products p ${isAdmin ? "" : "WHERE p.active=1"} ORDER BY p.name COLLATE NOCASE`).all()).results;
+    return json(rows);
+  }
+  if (path === "/api/npd-products" && method === "POST") {
+    needAdmin();
+    const name = prodName((await body()).name);
+    try { const r = await env.DB.prepare("INSERT INTO npd_products (name) VALUES (?)").bind(name).run(); return json({ id: r.meta.last_row_id }, 201); }
+    catch (e) { if (/UNIQUE/i.test(String(e?.message))) throw new HttpError(409, `“${name}” is already in the list`); throw e; }
+  }
+  if ((m = path.match(/^\/api\/npd-products\/(\d+)$/))) {
+    needAdmin();
+    const id = +m[1];
+    const cur = await env.DB.prepare("SELECT id,name FROM npd_products WHERE id=?").bind(id).first();
+    if (!cur) throw new HttpError(404, "Product not found");
+    if (method === "PATCH") {
+      const b = await body();
+      if (b.active !== undefined) await env.DB.prepare("UPDATE npd_products SET active=? WHERE id=?").bind(b.active ? 1 : 0, id).run();
+      if (b.name !== undefined) {
+        const name = prodName(b.name);
+        try {
+          await env.DB.batch([
+            env.DB.prepare("UPDATE npd_products SET name=? WHERE id=?").bind(name, id),
+            // records keep the spelling of the list: a rename updates them all
+            env.DB.prepare("UPDATE records SET data=json_set(data,'$.product_name',?1) WHERE module='npd' AND lower(json_extract(data,'$.product_name'))=lower(?2)").bind(name, cur.name),
+          ]);
+        } catch (e) { if (/UNIQUE/i.test(String(e?.message))) throw new HttpError(409, `“${name}” is already in the list`); throw e; }
+      }
+      return json({ ok: true });
+    }
+    if (method === "DELETE") {
+      const n = (await env.DB.prepare("SELECT COUNT(*) n FROM records WHERE module='npd' AND lower(json_extract(data,'$.product_name'))=lower(?)").bind(cur.name).first()).n;
+      if (n) throw new HttpError(409, `${n} NPD record${n === 1 ? " uses" : "s use"} this product. Disable it instead of deleting.`);
+      await env.DB.prepare("DELETE FROM npd_products WHERE id=?").bind(id).run();
+      return json({ ok: true });
+    }
+  }
+  // the product on an NPD record must come from the list (the stored spelling is the list's spelling)
+  const checkProduct = async (mod, v, current) => {
+    if (mod !== "npd") return;
+    const row = await env.DB.prepare("SELECT name, active FROM npd_products WHERE name=? COLLATE NOCASE").bind(v.product_name).first();
+    if (row && (row.active || (current && current.toLowerCase() === row.name.toLowerCase()))) { v.product_name = row.name; return; }
+    if (!row && current && current.toLowerCase() === String(v.product_name).toLowerCase()) return;    // old record keeps its old name when saved unchanged
+    throw bad("Choose the product from the list — only the admin can add product names");
+  };
 
   // ---------- generic records ----------
   const clean = (kindDef, b) => {
@@ -109,20 +160,24 @@ export async function moduleRoutes(c) {
   if (path === "/api/records" && method === "POST") {
     const b = await body();
     const kd = kindOf(b.module, b.kind);
-    const p = pack(b.module, kd, clean(kd, b));
+    const v = clean(kd, b);
+    await checkProduct(b.module, v, null);
+    const p = pack(b.module, kd, v);
     const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?)")
       .bind(b.module, kd.key, p.emp_id, p.name, p.pct, p.data, isAdmin ? null : session.trainer.id, who()).run();
     return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/records\/(\d+)$/))) {
     const id = +m[1];
-    const cur = await env.DB.prepare("SELECT id,module,kind,created_by FROM records WHERE id=?").bind(id).first();
+    const cur = await env.DB.prepare("SELECT id,module,kind,created_by,json_extract(data,'$.product_name') product FROM records WHERE id=?").bind(id).first();
     if (!cur || !canTouch(cur.created_by)) throw new HttpError(404, "Record not found");
     if (method === "DELETE") { await env.DB.prepare("DELETE FROM records WHERE id=?").bind(id).run(); return json({ ok: true }); }
     if (method === "PATCH") {
       const b = await body();
       const kd = kindOf(cur.module, cur.kind);
-      const p = pack(cur.module, kd, clean(kd, b));
+      const v = clean(kd, b);
+      await checkProduct(cur.module, v, cur.product);
+      const p = pack(cur.module, kd, v);
       await env.DB.prepare("UPDATE records SET emp_id=?,name=?,pct=?,data=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(p.emp_id, p.name, p.pct, p.data, id).run();
       return json({ ok: true });
     }

@@ -125,12 +125,14 @@ async function moduleView(key) {
   }
   draw();
   return shell(h("div", {},
-    pageHead(cfg.title, "Add records, then see how each area is doing.", rangeBar(), h("button", { class: "btn teal", onclick: () => open(null) }, "+ Add record")),
+    pageHead(cfg.title, "Add records, then see how each area is doing.", rangeBar(), key === "npd" && admin && h("button", { class: "btn ghost", onclick: () => manageProducts(reload) }, "Manage products"), h("button", { class: "btn teal", onclick: () => open(null) }, "+ Add record")),
     holder), `#/m/${key}`);
 }
 
 async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
+  const admin = session.role === "admin";
   const stores = await cachedGet("/stores", 60000);
+  const products = modKey === "npd" ? (await api("/npd-products")).filter((x) => x.active) : [];
   const byLabel = new Map(stores.map((s) => [storeLabel(s).toLowerCase(), s]));
   let kindKey = rec ? rec.kind : presetKind ?? cfg.kinds[0].key;
   if (!cfg.kinds.some((k) => k.key === kindKey)) kindKey = cfg.kinds[0].key;
@@ -154,6 +156,13 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
       let el;
       if (f.type === "textarea") el = h("textarea", { rows: 3, maxlength: 2000, value: val });
       else if (f.type === "date") el = h("input", { type: "date", value: val });
+      else if (f.type === "product") {
+        // product names are set by the admin: pick from the list, no free typing
+        const names = products.map((x) => x.name), cur = String(val || "");
+        if (cur && !names.some((n) => n.toLowerCase() === cur.toLowerCase())) names.unshift(cur);   // an older record keeps its name
+        el = h("select", { disabled: names.length === 0 }, h("option", { value: "" }, names.length ? "Select a product" : "No products yet"), ...names.map((n) => h("option", { value: n, selected: n.toLowerCase() === cur.toLowerCase() }, n)));
+        if (!names.length) el.dataset.empty = "1";
+      }
       else if (f.type === "pct") el = h("input", { type: "number", min: 0, max: 100, step: "0.1", inputmode: "decimal", value: val, oninput: refresh });
       else el = h("input", { type: "text", maxlength: 120, value: val, placeholder: f.placeholder || (f.type === "store" ? "Search or pick a store" : ""), list: f.type === "store" ? "dl-stores" : null, autocomplete: "off" });
       if (f.type === "store") {
@@ -161,7 +170,8 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
         el.addEventListener("change", fill); el.addEventListener("input", fill);
       }
       inputs[f.key] = el;
-      return h("div", { class: f.type === "textarea" ? "span2" : "" }, h("label", {}, f.label, f.required && " *"), el);
+      return h("div", { class: f.type === "textarea" ? "span2" : "" }, h("label", {}, f.label, f.required && " *"), el,
+        f.type === "product" && el.dataset.empty && h("div", { class: "small muted", style: "margin-top:4px" }, admin ? "Add the product names first: use “Manage products” on this page." : "The admin has not added any product names yet."));
     });
     body.replaceChildren(list, kindSel && field(modKey === "development" ? "Track" : "Type", kindSel), h("div", { class: "grid g2" }, els), modKey === "onboarding" && live, err);
     refresh();
@@ -423,4 +433,34 @@ async function svView(id) {
     h("div", { class: "card sign" }, h("div", { class: "grid g2" },
       h("div", {}, h("div", { class: "small muted" }, "Visited by"), h("div", {}, r.trainer_name || ""), h("div", { class: "sigline" }), h("div", { class: "small muted" }, "Signature")),
       h("div", {}, h("div", { class: "small muted" }, "Acknowledged by (branch)"), h("div", {}, r.ack_name || " "), h("div", { class: "small muted" }, r.ack_date ? fmtDay(r.ack_date) : ""), h("div", { class: "sigline" }), h("div", { class: "small muted" }, "Signature"))))), "#/sv");
+}
+
+// ================= NPD product list (admin only) =================
+const askName = (title, initial) => {
+  const inp = h("input", { type: "text", maxlength: 80, value: initial || "" });
+  return modal(title, h("div", {}, inp), (close) => { inp.addEventListener("keydown", (e) => e.key === "Enter" && close(inp.value.trim())); return [h("button", { class: "btn ghost", onclick: () => close(null) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(inp.value.trim()) }, "Save")]; });
+};
+async function manageProducts(onChange) {
+  const holder = h("div", { class: "stack" }), err = h("p", { class: "err", style: "margin:0" });
+  const input = h("input", { type: "text", maxlength: 80, placeholder: "New product name", onkeydown: (e) => e.key === "Enter" && add() });
+  let changed = false;
+  async function act(fn) { try { err.textContent = ""; await fn(); changed = true; await draw(); } catch (e) { err.textContent = e.message; } }
+  const add = () => act(async () => { if (!input.value.trim()) throw new Error("Type the product name first"); await api("/npd-products", { method: "POST", body: { name: input.value } }); input.value = ""; });
+  async function draw() {
+    const list = await api("/npd-products");
+    holder.replaceChildren(
+      h("div", { class: "row", style: "flex-wrap:nowrap" }, input, h("button", { class: "btn teal", onclick: add }, "+ Add")),
+      err,
+      list.length ? h("div", { class: "table-wrap", style: "max-height:46vh;overflow:auto" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Product", "Records", ""].map((x) => h("th", {}, x)))),
+        h("tbody", {}, list.map((p) => h("tr", { class: p.active ? "" : "off" }, h("td", {}, h("b", {}, p.name), !p.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Disabled")), h("td", {}, p.uses),
+          h("td", {}, h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
+            h("button", { class: "btn ghost sm", onclick: async () => { const v = await askName("Rename product", p.name); if (v && v !== p.name) act(() => api(`/npd-products/${p.id}`, { method: "PATCH", body: { name: v } })); } }, "Rename"),
+            h("button", { class: "btn ghost sm", onclick: () => act(() => api(`/npd-products/${p.id}`, { method: "PATCH", body: { active: !p.active } })) }, p.active ? "Disable" : "Enable"),
+            h("button", { class: "icon del", title: p.uses ? "In use — disable it instead" : "Delete", "aria-label": `Delete ${p.name}`, onclick: () => act(async () => { if (!(await confirmBox("Delete product?", `“${p.name}” will be removed from the list.`, "Delete", true))) throw new Error("Cancelled"); await api(`/npd-products/${p.id}`, { method: "DELETE" }); }) }, "🗑"))))))))
+        : h("p", { class: "muted", style: "margin:0" }, "No products yet. Add the first one above."),
+      h("p", { class: "small muted", style: "margin:0" }, "Trainers can only pick from this list, so every product is spelled the same way. Renaming a product updates all its records. A product that has records can be disabled (hidden from new entries) but not deleted."));
+  }
+  await draw();
+  await modal("NPD products", holder, (close) => [h("button", { class: "btn teal", onclick: () => close(true) }, "Done")]);
+  if (changed) await onChange();
 }

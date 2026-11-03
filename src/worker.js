@@ -427,7 +427,7 @@ async function handle(request, env, ctx) {
   const from = ts(url.searchParams.get("from")), to = ts(url.searchParams.get("to"));
 
   // --- onboarding / NPD / coaching / people development / store visit reports ---
-  if (/^\/api\/(modules|records|home|sv)(\/|$)/.test(path)) {
+  if (/^\/api\/(modules|records|home|sv|npd-products)(\/|$)/.test(path)) {
     const r = await moduleRoutes({ path, method, url, env, session, isAdmin, from, to, body, bad, HttpError, json, str });
     if (r) return r;
   }
