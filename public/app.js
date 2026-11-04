@@ -1048,7 +1048,7 @@ async function adminStores() {
   return shell(h("div", {},
     pageHead("Stores", "The list trainers pick from when they start a visit. Add, rename or disable any store."),
     h("div", { class: "card" },
-      h("p", { class: "small muted", style: "margin:0 0 12px" }, ls ? `Area manager, ROM, region and city refresh weekly from “AM & ROM Mapping” · last sync ${fmtDate(ls.at)} · ${ls.total} stores. Stores you edit or add by hand are never overwritten.` : "Waiting for the first sync from “AM & ROM Mapping”."),
+      h("p", { class: "small muted", style: "margin:0 0 12px" }, ls ? `Area manager and ROM refresh weekly from “Master Location Mapping” · last sync ${fmtDate(ls.at)} · ${ls.total} stores. Stores you edit or add by hand are never overwritten.` : "Waiting for the first sync from “Master Location Mapping”."),
       g.el)), "#/admin/stores");
 }
 

@@ -55,3 +55,9 @@ Typical load is far below the free limits (Workers 100,000 requests/day · D1 5 
 - **Onboarding** (HM / External / International), **NPD**, **Training/Coaching**, **People development** (5 tracks): generic records in the `records` table. Fields are defined once in `src/modules.js` and the forms/tables are built from it. Onboarding verification % = average of theory % and practical %. Trainers add/edit/delete their own records; the admin sees and edits everything.
 - **Verification**: the original SBS evaluation. Barista and Beverages are now one position, **Barista verification**, with a search bar for drinks (migration `0008`, existing evaluations keep their answers).
 - **Store visit** reports (`sv_reports`): the Half Million Store Visit Report form — readiness, quality check, team performance, highlights, action plan, overall assessment, printable as PDF.
+
+## Store mapping sync
+
+The weekly sync reads the shared **Master_Location_Mapping.xlsx** (sheet `Location_Mapping`): `node scripts/sync-mapping.mjs <file.tsv> --master [--dry-run]`.
+Existing stores get only their **Area Manager and ROM** updated (name, region and city stay as maintained here); stores that are new to the app are added with the file's name, region and city;
+nothing is ever disabled; stores locked by hand in the admin Stores page are skipped. `B01` and `B1` are treated as the same store. A scheduled task runs it every Sunday ~07:07 (Riyadh).
