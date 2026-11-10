@@ -20,5 +20,7 @@
   ],
   // Runs the Worker next to the database, so the several queries per request are not made across the world
   "placement": { "mode": "smart" },
-  "vars": { "ADMIN_USERNAME": "admin" }
+  // Keep variables added in the Cloudflare dashboard (BREVO_API_KEY) when deploying; secrets and keys never go in this file.
+  "keep_vars": true,
+  "vars": { "ADMIN_USERNAME": "admin", "MAIL_FROM": "training@hmreport.com", "MAIL_FROM_NAME": "HM Training Division" }
 }

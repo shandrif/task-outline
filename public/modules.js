@@ -264,11 +264,12 @@ async function svList() {
     { key: "visit_type", label: "Type" }, { key: "readiness_pct", label: "Readiness", num: true, render: (r) => avgCell(r.readiness_pct) },
     { key: "quality_avg", label: "Quality avg", num: true, render: (r) => scoreCell(r.quality_avg) }, { key: "overall_score", label: "Overall", num: true, render: (r) => scoreCell(r.overall_score) },
     { key: "overall_rating", label: "Rating" }, { key: "follow_up", label: "Follow-up", num: true, render: (r) => (r.follow_up ? h("span", { class: "chip warn" }, "Required") : h("span", { class: "muted" }, "No")) },
+    { key: "emailed_at", label: "Emailed", render: (r) => (r.emailed_at ? h("span", { class: "chip good", title: fmtDateTime(r.emailed_at) }, fmtDate(r.emailed_at)) : h("span", { class: "muted" }, "—")) },
   ];
   const g = grid({
     rows, cols, sort: { key: "visit_date", dir: -1 }, onRow: (r) => (location.hash = `#/sv/${r.id}`), empty: "No store visit reports yet.",
     searchIn: (r) => `${r.report} ${r.store} ${r.area_manager || ""} ${r.rom || ""} ${r.city || ""} ${r.trainer_name || ""} ${r.branch_manager || ""}`,
-    filters: [...MAP_FILTERS, ...(admin ? [{ key: "trainer_name", label: "trainers" }] : []), { key: "visit_type", label: "visit types" }, { key: "overall_rating", label: "ratings" }, { key: "follow_up", label: "follow-ups", get: (r) => (r.follow_up ? "1" : "0"), show: (v) => (v === "1" ? "Required" : "Not required") }],
+    filters: [...MAP_FILTERS, ...(admin ? [{ key: "trainer_name", label: "trainers" }] : []), { key: "visit_type", label: "visit types" }, { key: "overall_rating", label: "ratings" }, { key: "follow_up", label: "follow-ups", get: (r) => (r.follow_up ? "1" : "0"), show: (v) => (v === "1" ? "Required" : "Not required") }, { key: "emailed", label: "email statuses", get: (r) => (r.emailed_at ? "1" : "0"), show: (v) => (v === "1" ? "Emailed" : "Not emailed yet") }],
     toolbar: [h("button", { class: "btn teal sm", onclick: () => reportSv(g.rows(), { total: rows.length }) }, "Export to Excel")],
   });
   const groups = [["store", "Store"], ["area_manager", "Area manager"], ["rom", "ROM"], ["region", "Region"], ["city", "City"], ["visit_type", "Visit type"], ...(admin ? [["trainer_name", "Visited by"]] : [])];
@@ -412,7 +413,8 @@ async function svView(id) {
   const del = async () => { if (await confirmBox("Delete this report?", `${svNo(id)} will be removed for good.`, "Delete", true)) { try { await api(`/sv/${id}`, { method: "DELETE" }); toast("Deleted"); location.hash = "#/sv"; } catch (e) { toast(e.message); } } };
   return shell(h("div", { class: "svview" },
     h("div", { class: "row no-print", style: "justify-content:space-between;margin-bottom:10px" }, h("a", { class: "btn ghost sm", href: "#/sv" }, "← Reports"),
-      h("div", { class: "row" }, mine && h("a", { class: "btn ghost sm", href: `#/sv/${id}/edit` }, "Edit"), h("button", { class: "btn teal sm", onclick: () => window.print() }, "Print / Save as PDF"), mine && h("button", { class: "btn danger sm", onclick: del }, "Delete"))),
+      h("div", { class: "row" }, mine && h("a", { class: "btn ghost sm", href: `#/sv/${id}/edit` }, "Edit"), h("button", { class: "btn ghost sm", onclick: () => window.print() }, "Print / Save as PDF"), h("button", { class: "btn teal sm", onclick: () => svEmailDialog(r, renderRoute) }, "✉ Email to store"), mine && h("button", { class: "btn danger sm", onclick: del }, "Delete"))),
+    r.emailed_at && h("div", { class: "sve-sent no-print" }, `✓ Emailed to the store on ${fmtDateTime(r.emailed_at)}`),
     h("div", { class: "card" },
       h("div", { class: "row", style: "justify-content:space-between;align-items:flex-start" }, h("div", {}, h("div", { class: "small muted", style: "letter-spacing:.12em;font-weight:700" }, "HALF MILLION · OPERATIONS"), h("h1", { style: "margin:4px 0 2px" }, "Store Visit Report"), h("div", { class: "muted" }, "Branch readiness, product quality and team performance assessment")), h("div", { style: "text-align:right" }, h("div", { class: "small muted" }, "REPORT NO."), h("b", { style: "font-size:20px" }, svNo(id)))),
       h("div", { class: "grid g3", style: "margin-top:16px" }, kv("Branch / store", `${r.store_code} · ${r.store_name}`), kv("Visit date", fmtDay(r.visit_date)), kv("Visit time", r.visit_time),

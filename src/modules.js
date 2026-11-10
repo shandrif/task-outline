@@ -1,3 +1,5 @@
+import { svEmailRoutes } from "./sv-email.js";
+
 // Onboarding, NPD, Training/Coaching, People Development (generic records) and Store Visit reports.
 // Trainers see and change only their own entries; the admin sees and changes everything.
 
@@ -250,7 +252,8 @@ export async function moduleRoutes(c) {
     };
   };
   const SV_LIST = `SELECT r.id,r.store_id,r.trainer_id,r.visit_date,r.visit_time,r.visit_type,r.branch_manager,r.readiness_pct,r.quality_avg,r.overall_rating,r.overall_score,r.follow_up,r.created_at,r.updated_at,
-      st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,t.name trainer_name,t.employee_id trainer_employee_id
+      st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,t.name trainer_name,t.employee_id trainer_employee_id,
+      (SELECT MAX(se.sent_at) FROM sv_emails se WHERE se.report_id=r.id AND se.status='sent') emailed_at
     FROM sv_reports r JOIN stores st ON st.id=r.store_id LEFT JOIN trainers t ON t.id=r.trainer_id`;
 
   if (path === "/api/sv" && method === "GET") {
@@ -273,6 +276,16 @@ export async function moduleRoutes(c) {
       "INSERT INTO sv_reports (store_id,trainer_id,visit_date,visit_time,branch_manager,visit_type,body,readiness_pct,quality_avg,overall_rating,overall_score,follow_up) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(store.id, session.trainer.id, v.visit_date, v.visit_time, v.branch_manager, v.visit_type, v.body, v.readiness_pct, v.quality_avg, v.overall_rating, v.overall_score, v.follow_up).run();
     return json({ id: r.meta.last_row_id }, 201);
+  }
+  // email a report to the store (any trainer who can open the report, or the admin)
+  if (/^\/api\/sv\/\d+\/email(\/preview)?$/.test(path)) {
+    const report = async (rid) => {
+      const row = await env.DB.prepare("SELECT body, trainer_id FROM sv_reports WHERE id=?").bind(rid).first();
+      if (!row || !canTouch(row.trainer_id)) throw new HttpError(404, "Report not found");
+      const head = await env.DB.prepare(`${SV_LIST} WHERE r.id=?`).bind(rid).first();
+      return { ...head, ...JSON.parse(row.body || "{}") };
+    };
+    return svEmailRoutes({ path, method, env, session, isAdmin, body, bad, HttpError, json, report });
   }
   if ((m = path.match(/^\/api\/sv\/(\d+)$/))) {
     const id = +m[1];

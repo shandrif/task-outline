@@ -70,7 +70,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 80px; }
 .icon:hover { background: rgba(212,179,139,.35); }
 .icon.del:hover { background: rgba(194,86,74,.15); color: var(--bad); }
 label { display: block; font-weight: 700; font-size: 14px; margin-bottom: 5px; }
-input[type=text], input[type=password], input[type=search], select, textarea {
+input[type=text], input[type=password], input[type=search], input[type=email], select, textarea {
   width: 100%; background: #fff; border: 1.5px solid var(--line); border-radius: 10px; padding: 10px 12px; outline: none; }
 input:focus, select:focus, textarea:focus { border-color: var(--good); box-shadow: 0 0 0 3px rgba(132,198,178,.45); }
 textarea { resize: vertical; min-height: 64px; }
@@ -434,3 +434,21 @@ button.chip { cursor: pointer; border: 0; }
 .ws-text { white-space: pre-wrap; display: inline-block; min-width: 220px; }
 .ws-tabs { margin-bottom: 14px; }
 @media (max-width: 560px) { .ws-tabs .tab { flex: 1 1 calc(50% - 8px); text-align: center; font-size: 14px; } }
+
+/* ---------- email a store visit report ---------- */
+.modal:has(.sve) { max-width: min(680px, 96vw); }
+.sve input[type="email"], .sve textarea { width: 100%; }
+.sve-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.sve-chips:empty { display: none; }
+.sve-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; background: rgba(132,198,178,.4); }
+.sve-chip button { border: 0; background: rgba(29,27,23,.12); border-radius: 50%; width: 20px; height: 20px; line-height: 20px; font-size: 11px; cursor: pointer; padding: 0; color: inherit; }
+.sve-recent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.sve-recent:empty { display: none; }
+.sve-sug { border: 1px dashed var(--tan); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; color: inherit; }
+.sve-sug:hover { background: rgba(212,179,139,.25); }
+.sve-checks { display: grid; gap: 6px; }
+.sve-check { display: flex; gap: 8px; align-items: center; font-weight: 400 !important; cursor: pointer; }
+.sve-preview { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #F5EDE3; }
+.sve-frame { width: 100%; height: 560px; border: 0; display: block; background: #F5EDE3; }
+.sve-hist { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 10px; }
+.sve-sent { background: rgba(43,138,116,.12); color: var(--good); font-weight: 700; border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; }
