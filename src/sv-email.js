@@ -124,11 +124,12 @@ export async function svEmailRoutes({ path, method, env, session, isAdmin, body,
   const recognisable = (r.team?.rows || []).map((x, i) => ({ i, name: x.name, position: x.position, score: x.score })).filter((x) => has(x.name));
 
   if (method === "GET" && !m[2]) {
-    const [toStore, toAll, cc, hist] = await env.DB.batch([
+    const [toStore, toAll, cc, hist, dir] = await env.DB.batch([
       env.DB.prepare("SELECT email FROM email_book WHERE role='to' AND store_id=? ORDER BY last_used DESC LIMIT 10").bind(r.store_id),
       env.DB.prepare("SELECT email FROM email_book WHERE role='to' AND store_id<>? GROUP BY email ORDER BY MAX(last_used) DESC LIMIT 40").bind(r.store_id),
       env.DB.prepare("SELECT email FROM email_book WHERE role='cc' ORDER BY uses DESC, last_used DESC LIMIT 60"),
       env.DB.prepare("SELECT to_email, cc, sent_by_name, sent_at, status, error FROM sv_emails WHERE report_id=? ORDER BY id DESC LIMIT 20").bind(id),
+      env.DB.prepare("SELECT name, email FROM branch_emails WHERE active=1 ORDER BY name COLLATE NOCASE"),
     ]);
     const lastCc = hist.results.find((x) => x.status === "sent");
     return json({
@@ -137,6 +138,7 @@ export async function svEmailRoutes({ path, method, env, session, isAdmin, body,
       cc_default: lastCc ? JSON.parse(lastCc.cc || "[]") : [],
       recognise: recognisable.map((x) => ({ ...x, checked: x.score !== null && x.score !== undefined && x.score !== "" && +x.score >= RECOGNISE_FROM })),
       history: hist.results.map((x) => ({ ...x, cc: JSON.parse(x.cc || "[]") })),
+      directory: dir.results,
     });
   }
   if (method !== "POST") throw new HttpError(405, "Method not allowed");
