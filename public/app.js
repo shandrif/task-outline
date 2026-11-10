@@ -67,6 +67,19 @@ const confirmBox = (title, text, okLabel = "Confirm", danger = false) =>
     h("button", { class: `btn ${danger ? "danger" : "teal"}`, onclick: () => close(true) }, okLabel),
   ]);
 
+// Long lists come from the server in pages of 500 (newest first); this fetches page after page until the list is complete,
+// so each request stays small and quick however much history builds up.
+async function apiPages(path, page = 500) {
+  const out = [];
+  for (let before = null, n = 0; n < 400; n++) {
+    const rows = await api(path + (before ? `${path.includes("?") ? "&" : "?"}before=${before}` : ""));
+    out.push(...rows);
+    if (rows.length < page) break;
+    before = rows[rows.length - 1].id;
+  }
+  return out;
+}
+
 // ---------- reusable sortable + filterable table ----------
 // cols: [{key,label,num?,get?(row),render?(row)->node,nosort?}]; filters: [{key,label,get?(row),show?(value)}]
 function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, rowClass, empty = "Nothing to show.", toolbar = [], maxHeight }) {
@@ -281,7 +294,7 @@ async function trainerHome() {
     searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.area_manager || ""}`,
     filters: [{ key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, { key: "city", label: "cities" }],
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits yet. Start your first one with “Start store visit”.",
-    toolbar: visits.length >= 60 ? [h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; const all = await api("/visits?all=1"); g.setRows(all.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }))); e.target.remove(); } }, "Show older visits")] : [],
+    toolbar: visits.length >= 60 ? [h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; const all = await apiPages("/visits?all=1"); g.setRows(all.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }))); e.target.remove(); } }, "Show older visits")] : [],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) },
       { key: "city", label: "City" }, { key: "evals", label: "Staff evaluated", num: true }, { key: "avg", label: "Average", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip }],
   });
@@ -841,7 +854,7 @@ async function adminVisits(query) {
   const fromStore = query.get("store");
   const prep = (v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null });
   let vMore = visitList.length >= PAGE;
-  const loadAllVisits = async () => { const all = await api("/visits" + rq("all=1")); vMore = false; visits.splice(0, visits.length, ...all.map(prep)); vg.setRows(visits); vBtn.remove(); draw(); };
+  const loadAllVisits = async () => { const all = await apiPages("/visits" + rq("all=1")); vMore = false; visits.splice(0, visits.length, ...all.map(prep)); vg.setRows(visits); vBtn.remove(); draw(); };
   const vBtn = h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; try { await loadAllVisits(); } catch (ex) { toast(ex.message); e.target.disabled = false; } } }, `Showing newest ${PAGE} — load all`);
   const visits = visitList.map(prep);
   const removeVisit = async (v) => {
@@ -867,7 +880,7 @@ async function adminVisits(query) {
   const buildEvals = async () => {
     const list = await api("/evals" + rq());
     let eMore = list.length >= PAGE;
-    const loadAllEvals = async () => { const all = await api("/evals" + rq("all=1")); eMore = false; evals.splice(0, evals.length, ...all.map(prepE)); eg.setRows(evals); evalCount = evals.length; eBtn.remove(); draw(); };
+    const loadAllEvals = async () => { const all = await apiPages("/evals" + rq("all=1")); eMore = false; evals.splice(0, evals.length, ...all.map(prepE)); eg.setRows(evals); evalCount = evals.length; eBtn.remove(); draw(); };
     const eBtn = h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; try { await loadAllEvals(); } catch (ex) { toast(ex.message); e.target.disabled = false; } } }, `Showing newest ${PAGE} — load all`);
     const prepE = (e) => ({ ...e, store: `${e.store_code} · ${e.store_name}`, pctv: e.status === "submitted" ? pct(e.score, e.max_score) : null, trainedPct: e.status === "submitted" ? pct(e.trained_count, e.max_score) : null, when: e.submitted_at || e.created_at });
     const evals = list.map(prepE);
@@ -878,7 +891,7 @@ async function adminVisits(query) {
     const exportEvals = async () => {
       try {
         const keep = new Set(eg.rows().map((e) => e.id));
-        const full = (await api("/evals" + rq("full=1"))).filter((e) => e.status === "submitted" && keep.has(e.id));   // full notes, only what the filters show
+        const full = (await apiPages("/evals" + rq("full=1"))).filter((e) => e.status === "submitted" && keep.has(e.id));   // full notes, only what the filters show
         await reportEvals(full, { total: evals.filter((e) => e.status === "submitted").length });
       } catch (ex) { toast(ex.message); }
     };

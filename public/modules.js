@@ -54,14 +54,14 @@ async function moduleView(key) {
   const cfg = modules[key];
   if (!cfg) return shell(emptyCard("Unknown section"), "#/home");
   const admin = session.role === "admin";
-  let rows = await api("/records" + rq("module=" + key));
+  let rows = await apiPages("/records" + rq("module=" + key));
   cachedGet("/stores", 60000).catch(() => {});
   const kindLabel = Object.fromEntries(cfg.kinds.map((k) => [k.key, k.label]));
   let kind = "";
   const holder = h("div");
   const multi = cfg.kinds.length > 1;
 
-  const reload = async () => { rows = await api("/records" + rq("module=" + key)); draw(); };
+  const reload = async () => { rows = await apiPages("/records" + rq("module=" + key)); draw(); };
   const open = (rec) => recordForm(key, cfg, rec, rec ? rec.kind : kind || null, reload);
   const del = async (r) => { if (await confirmBox("Delete this record?", `${r.name || "Record"} will be removed.`, "Delete", true)) { try { await api(`/records/${r.id}`, { method: "DELETE" }); toast("Deleted"); await reload(); } catch (e) { toast(e.message); } } };
 
@@ -254,7 +254,7 @@ async function homeView() {
 const svNo = (id) => `SV-${String(id).padStart(4, "0")}`;
 async function svList() {
   const admin = session.role === "admin";
-  const rows = (await api("/sv" + rq())).map((r) => ({ ...r, report: svNo(r.id), store: `${r.store_code} · ${r.store_name}` }));
+  const rows = (await apiPages("/sv" + rq())).map((r) => ({ ...r, report: svNo(r.id), store: `${r.store_code} · ${r.store_name}` }));
   const scored = rows.filter((r) => r.overall_score != null), rd = rows.filter((r) => r.readiness_pct != null);
   const avg = scored.length ? r1(scored.reduce((n, r) => n + r.overall_score, 0) / scored.length) : null;
   const ravg = rd.length ? r1(rd.reduce((n, r) => n + r.readiness_pct, 0) / rd.length) : null;

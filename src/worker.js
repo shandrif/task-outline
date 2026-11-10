@@ -38,6 +38,7 @@ function str(v, max, field, { required = false, min = 0 } = {}) {
 // YYYY-MM-DD or null (used for date-range filters)
 const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : null);
 // "YYYY-MM-DD HH:MM:SS" (UTC) or null — range bounds sent by the browser
+const T_MIN = "0000-01-01 00:00:00", T_MAX = "9999-12-31 23:59:59";
 const ts = (v) => (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$/.test(v || "") ? v.replace("T", " ") : null);
 
 async function hmac(secret, data) {
@@ -291,18 +292,25 @@ async function saveAnswers(env, session, id, body) {
 
 // ---------- reports (admin) ----------
 // ?1 = from (inclusive), ?2 = to (exclusive), UTC timestamps; either may be NULL = unbounded
-const RV = (a = "v") => `(?1 IS NULL OR ${a}.started_at >= ?1) AND (?2 IS NULL OR ${a}.started_at < ?2)`;
-const RE = (a = "e") => `${a}.status='submitted' AND (?1 IS NULL OR ${a}.submitted_at >= ?1) AND (?2 IS NULL OR ${a}.submitted_at < ?2)`;
+// wide = no period chosen (all time). Lists sorted by id then read newest-first instead of walking the whole date index;
+// the unary "+" only tells SQLite not to use the date index for this filter (same rows, same result).
+const RV = (a = "v", wide = false) => `${wide ? "+" : ""}${a}.started_at >= ?1 AND ${wide ? "+" : ""}${a}.started_at < ?2`;
+const RE = (a = "e") => `${a}.status='submitted' AND ${a}.submitted_at >= ?1 AND ${a}.submitted_at < ?2`;
 
 const VISITS_SQL = `SELECT v.id,v.status,v.started_at,v.ended_at,v.notes,v.follow_up,v.follow_up_date,v.trainer_id,
     t.name trainer_name,t.employee_id trainer_employee_id,t.designation trainer_designation,
     st.id store_id,st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,
-    (SELECT COUNT(*) FROM evaluations e WHERE e.visit_id=v.id AND e.status='submitted') evals,
-    (SELECT COUNT(*) FROM evaluations e WHERE e.visit_id=v.id AND e.status='draft') drafts,
-    (SELECT COUNT(DISTINCT lower(e.staff_name)) FROM evaluations e WHERE e.visit_id=v.id AND e.status='submitted') staff,
-    (SELECT COALESCE(SUM(e.score),0) FROM evaluations e WHERE e.visit_id=v.id AND e.status='submitted') sum_score,
-    (SELECT COALESCE(SUM(e.max_score),0) FROM evaluations e WHERE e.visit_id=v.id AND e.status='submitted') sum_max
+    (SELECT json_array(SUM(e.status='submitted'), SUM(e.status='draft'), COUNT(DISTINCT CASE WHEN e.status='submitted' THEN lower(e.staff_name) END),
+       SUM(CASE WHEN e.status='submitted' THEN e.score END), SUM(CASE WHEN e.status='submitted' THEN e.max_score END)) FROM evaluations e WHERE e.visit_id=v.id) agg
   FROM visits v JOIN trainers t ON t.id=v.trainer_id JOIN stores st ON st.id=v.store_id`;
+// The per-visit counts come back as one small JSON array (one pass over the visit's evaluations instead of five).
+const visitRows = (rows) => rows.map(({ agg, ...v }) => {
+  const [evals, drafts, staff, sum_score, sum_max] = JSON.parse(agg || "[]");
+  return { ...v, evals: evals || 0, drafts: drafts || 0, staff: staff || 0, sum_score: sum_score || 0, sum_max: sum_max || 0 };
+});
+// Long lists are served in pages of PAGE rows (newest first, ?before=<last id>) so no single response grows with history.
+const PAGE = 500;
+const beforeId = (url) => { const n = Math.floor(Number(url.searchParams.get("before"))); return n > 0 ? n : Number.MAX_SAFE_INTEGER; };
 
 // Weakest areas / notes look at the latest 2,000 submitted evaluations in the period (date-indexed), so their cost stays small however much data builds up.
 const WEAK_SQL = (extra = "") => `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
@@ -372,7 +380,7 @@ async function trainerDetail(env, id, from, to) {
     env.DB.prepare(`${VISITS_SQL} WHERE v.trainer_id=?3 AND ${RV()} ORDER BY v.id DESC LIMIT 1000`).bind(from, to, id).all(),
   ]);
   if (!agg.byTrainer[0]) throw new HttpError(404, "Trainer not found");
-  return { trainer: agg.byTrainer[0], visits: visits.results, weakest: agg.weakest, notes: agg.notes, storesTotal: agg.totals.stores };
+  return { trainer: agg.byTrainer[0], visits: visitRows(visits.results), weakest: agg.weakest, notes: agg.notes, storesTotal: agg.totals.stores };
 }
 
 // ----- admin: ordering -----
@@ -425,11 +433,14 @@ async function handle(request, env, ctx) {
   const needAdmin = () => { if (!isAdmin) throw new HttpError(403, "Admin only"); };
   const needTrainer = () => { if (isAdmin) throw new HttpError(403, "This action is done from a trainer account"); };
   const body = () => request.json().catch(() => { throw bad("Invalid JSON"); });
-  const from = ts(url.searchParams.get("from")), to = ts(url.searchParams.get("to"));
+  // No period = all time. Open-ended bounds are filled in (instead of "?1 IS NULL OR ...") so SQLite can use the date indexes:
+  // "x IS NULL OR col >= x" makes it scan the whole table, which would grow the reads with every month of history.
+  const from = ts(url.searchParams.get("from")) || T_MIN, to = ts(url.searchParams.get("to")) || T_MAX;
+  const wide = from === T_MIN && to === T_MAX;
 
   // --- onboarding / NPD / coaching / people development / store visit reports ---
   if (/^\/api\/(modules|records|home|sv|npd-products)(\/|$)/.test(path)) {
-    const r = await moduleRoutes({ path, method, url, env, session, isAdmin, from, to, body, bad, HttpError, json, str });
+    const r = await moduleRoutes({ path, method, url, env, session, isAdmin, from, to, wide, page: PAGE, before: beforeId(url), body, bad, HttpError, json, str });
     if (r) return r;
   }
 
@@ -469,8 +480,8 @@ async function handle(request, env, ctx) {
   if (path === "/api/visits" && method === "GET") {
     const tid = isAdmin ? (url.searchParams.get("trainer") ? +url.searchParams.get("trainer") : null) : session.trainer.id;
     const more = url.searchParams.get("all") === "1";
-    const limit = more ? 2000 : isAdmin ? 300 : 60;   // newest first; older rows load on request (keeps responses small and fast)
-    return json((await env.DB.prepare(`${VISITS_SQL} WHERE (?3 IS NULL OR v.trainer_id=?3) AND ${RV()} ORDER BY v.id DESC LIMIT ${limit}`).bind(from, to, tid).all()).results);
+    const limit = more ? PAGE : isAdmin ? 300 : 60;   // newest first; older rows load on request, a page at a time (keeps every response small)
+    return json(visitRows((await env.DB.prepare(`${VISITS_SQL} WHERE (?3 IS NULL OR v.trainer_id=?3) AND ${RV("v", wide)} AND v.id < ?4 ORDER BY v.id DESC LIMIT ${limit}`).bind(from, to, tid, beforeId(url)).all()).results));
   }
   if (path === "/api/visits" && method === "POST") {
     needTrainer();
@@ -500,7 +511,7 @@ async function handle(request, env, ctx) {
           `SELECT staff_name name, MAX(staff_code) code, position_id, MAX(created_at) last_at FROM evaluations
            WHERE store_id=(SELECT store_id FROM visits WHERE id=?) GROUP BY lower(staff_name), position_id ORDER BY last_at DESC LIMIT 300`).bind(id),
       ]);
-      const visit = v.results[0];
+      const visit = visitRows(v.results)[0];
       if (!visit || (!isAdmin && visit.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
       return json({ visit, evaluations: evs.results, staff: staff.results });
     }
@@ -549,8 +560,8 @@ async function handle(request, env, ctx) {
       `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.created_at,e.submitted_at,${full ? "e.improvement_notes" : "substr(e.improvement_notes,1,200) improvement_notes"},e.position_id,e.visit_id,e.trainer_id,p.name position_name,
               st.id store_id,st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,t.name trainer_name,t.employee_id trainer_employee_id
        FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id LEFT JOIN trainers t ON t.id=e.trainer_id
-       WHERE (?2 IS NULL OR e.trainer_id=?2) AND (?1 IS NULL OR e.created_at >= ?1) AND (?3 IS NULL OR e.created_at < ?3) ORDER BY e.id DESC LIMIT ${full || url.searchParams.get("all") === "1" ? 2000 : 300}`
-    ).bind(from, isAdmin ? null : session.trainer.id, to).all()).results);
+       WHERE (?2 IS NULL OR e.trainer_id=?2) AND ${wide ? "+" : ""}e.created_at >= ?1 AND ${wide ? "+" : ""}e.created_at < ?3 AND e.id < ?4 ORDER BY e.id DESC LIMIT ${full || url.searchParams.get("all") === "1" ? PAGE : 300}`
+    ).bind(from, isAdmin ? null : session.trainer.id, to, beforeId(url)).all()).results);
   }
   if (path === "/api/evals" && method === "POST") {
     needTrainer();

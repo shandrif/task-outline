@@ -22,7 +22,8 @@ export async function workshopRoutes({ path, method, url, env, session, isAdmin,
     const def = WS_SECTIONS[section];
     if (!def) throw bad("Choose a section");
     const date = str(b.entry_date, 10, "Date", { required: true });
-    if (!DATE.test(date) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date) throw bad("Date must be a valid date");
+    const dt = new Date(`${date}T00:00:00Z`);
+    if (!DATE.test(date) || Number.isNaN(dt.getTime()) || dt.toISOString().slice(0, 10) !== date) throw bad("Date must be a valid date");
     const status = String(b.status || "").toLowerCase();
     if (!WS_STATUSES.includes(status)) throw bad("Choose a status: Open, Ongoing or Completed");
     const title = def.titled ? str(b.title, 150, `${def.label} name`, { required: true }) : null;

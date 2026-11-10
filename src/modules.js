@@ -55,7 +55,7 @@ const CORE = new Set(["emp_id", "name", "pct"]);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function moduleRoutes(c) {
-  const { path, method, url, env, session, isAdmin, from, to, body, bad, HttpError, json, str } = c;
+  const { path, method, url, env, session, isAdmin, from, to, wide, page, before, body, bad, HttpError, json, str } = c;
   let m;
   const owner = () => (isAdmin ? null : session.trainer.id);          // NULL = see everything
   const who = () => (isAdmin ? "Admin" : session.trainer.name);
@@ -153,8 +153,8 @@ export async function moduleRoutes(c) {
     const mod = url.searchParams.get("module");
     if (!MODULES[mod]) throw bad("Unknown module");
     const rows = (await env.DB.prepare(
-      "SELECT * FROM records WHERE module=?1 AND (?2 IS NULL OR created_at >= ?2) AND (?3 IS NULL OR created_at < ?3) AND (?4 IS NULL OR created_by=?4) ORDER BY id DESC LIMIT 3000"
-    ).bind(mod, from, to, owner()).all()).results;
+      `SELECT * FROM records WHERE module=?1 AND ${wide ? "+" : ""}created_at >= ?2 AND ${wide ? "+" : ""}created_at < ?3 AND (?4 IS NULL OR created_by=?4) AND id < ?5 ORDER BY id DESC LIMIT ${page}`
+    ).bind(mod, from, to, owner(), before).all()).results;
     return json(rows.map(unpack));
   }
   if (path === "/api/records" && method === "POST") {
@@ -188,21 +188,21 @@ export async function moduleRoutes(c) {
     const o = owner();
     const [recs, svs, vis, evs, recent, byRec, bySv, byVis, byEv, trainers] = await env.DB.batch([
       env.DB.prepare(`SELECT module, kind, COUNT(*) n, COUNT(pct) scored, COALESCE(SUM(pct),0) sum_pct, SUM(CASE WHEN pct>=85 THEN 1 ELSE 0 END) good, SUM(CASE WHEN pct<65 THEN 1 ELSE 0 END) low
-        FROM records WHERE (?1 IS NULL OR created_at >= ?1) AND (?2 IS NULL OR created_at < ?2) AND (?3 IS NULL OR created_by=?3) GROUP BY module, kind`).bind(from, to, o),
+        FROM records WHERE created_at >= ?1 AND created_at < ?2 AND (?3 IS NULL OR created_by=?3) GROUP BY module, kind`).bind(from, to, o),
       env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id) stores, COUNT(overall_score) scored, COALESCE(SUM(overall_score),0) sum_score, COALESCE(SUM(follow_up),0) follow_ups
-        FROM sv_reports WHERE (?1 IS NULL OR created_at >= ?1) AND (?2 IS NULL OR created_at < ?2) AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
-      env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id) stores FROM visits WHERE (?1 IS NULL OR started_at >= ?1) AND (?2 IS NULL OR started_at < ?2) AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
+        FROM sv_reports WHERE created_at >= ?1 AND created_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
+      env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id) stores FROM visits WHERE started_at >= ?1 AND started_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
       env.DB.prepare(`SELECT COUNT(*) n, COALESCE(SUM(score),0) sc, COALESCE(SUM(max_score),0) mx FROM evaluations
-        WHERE status='submitted' AND (?1 IS NULL OR submitted_at >= ?1) AND (?2 IS NULL OR submitted_at < ?2) AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
+        WHERE status='submitted' AND submitted_at >= ?1 AND submitted_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
       env.DB.prepare(`SELECT * FROM (
           SELECT 'rec' src, id, module, kind, name, pct, created_by_name by_name, created_at FROM records WHERE (?1 IS NULL OR created_by=?1) ORDER BY id DESC LIMIT 12)
         UNION ALL SELECT * FROM (
           SELECT 'sv' src, r.id, 'storevisit' module, '' kind, st.name name, r.overall_score pct, t.name by_name, r.created_at FROM sv_reports r JOIN stores st ON st.id=r.store_id LEFT JOIN trainers t ON t.id=r.trainer_id WHERE (?1 IS NULL OR r.trainer_id=?1) ORDER BY r.id DESC LIMIT 12)
         ORDER BY created_at DESC LIMIT 12`).bind(o),
-      env.DB.prepare(`SELECT created_by tid, module, COUNT(*) n FROM records WHERE (?1 IS NULL OR created_at >= ?1) AND (?2 IS NULL OR created_at < ?2) GROUP BY created_by, module`).bind(from, to),
-      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM sv_reports WHERE (?1 IS NULL OR created_at >= ?1) AND (?2 IS NULL OR created_at < ?2) GROUP BY trainer_id`).bind(from, to),
-      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM visits WHERE (?1 IS NULL OR started_at >= ?1) AND (?2 IS NULL OR started_at < ?2) GROUP BY trainer_id`).bind(from, to),
-      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM evaluations WHERE status='submitted' AND (?1 IS NULL OR submitted_at >= ?1) AND (?2 IS NULL OR submitted_at < ?2) GROUP BY trainer_id`).bind(from, to),
+      env.DB.prepare(`SELECT created_by tid, module, COUNT(*) n FROM records WHERE created_at >= ?1 AND created_at < ?2 GROUP BY created_by, module`).bind(from, to),
+      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM sv_reports WHERE created_at >= ?1 AND created_at < ?2 GROUP BY trainer_id`).bind(from, to),
+      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM visits WHERE started_at >= ?1 AND started_at < ?2 GROUP BY trainer_id`).bind(from, to),
+      env.DB.prepare(`SELECT trainer_id tid, COUNT(*) n FROM evaluations WHERE status='submitted' AND submitted_at >= ?1 AND submitted_at < ?2 GROUP BY trainer_id`).bind(from, to),
       env.DB.prepare("SELECT id,name,employee_id,designation,status FROM trainers ORDER BY name COLLATE NOCASE"),
     ]);
     let team = null;
@@ -254,7 +254,7 @@ export async function moduleRoutes(c) {
     FROM sv_reports r JOIN stores st ON st.id=r.store_id LEFT JOIN trainers t ON t.id=r.trainer_id`;
 
   if (path === "/api/sv" && method === "GET") {
-    return json((await env.DB.prepare(`${SV_LIST} WHERE (?1 IS NULL OR r.created_at >= ?1) AND (?2 IS NULL OR r.created_at < ?2) AND (?3 IS NULL OR r.trainer_id=?3) ORDER BY r.id DESC LIMIT 2000`).bind(from, to, owner()).all()).results);
+    return json((await env.DB.prepare(`${SV_LIST} WHERE ${wide ? "+" : ""}r.created_at >= ?1 AND ${wide ? "+" : ""}r.created_at < ?2 AND (?3 IS NULL OR r.trainer_id=?3) AND r.id < ?4 ORDER BY r.id DESC LIMIT ${page}`).bind(from, to, owner(), before).all()).results);
   }
   if (path === "/api/sv/template" && method === "GET") {
     // the checkpoint wording of this trainer's last report, so the same list does not have to be typed every time
