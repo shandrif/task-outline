@@ -67,25 +67,6 @@ const confirmBox = (title, text, okLabel = "Confirm", danger = false) =>
     h("button", { class: `btn ${danger ? "danger" : "teal"}`, onclick: () => close(true) }, okLabel),
   ]);
 
-// The 880 KB Excel library is only fetched the first time someone exports.
-let xlsxReady;
-const loadXlsx = () => (window.XLSX ? Promise.resolve() : (xlsxReady ||= new Promise((resolve, reject) => {
-  const el = document.createElement("script"); el.src = "/vendor/xlsx.full.min.js";
-  el.onload = resolve; el.onerror = () => { xlsxReady = null; reject(new Error("Could not load the Excel exporter — check your connection")); };
-  document.head.append(el);
-})));
-async function download(wbRows, filename, sheetName = "Sheet1") {
-  try {
-    toast("Preparing Excel file…");
-    await loadXlsx();
-    const ws = XLSX.utils.aoa_to_sheet(wbRows);
-    ws["!cols"] = wbRows[0].map((_, i) => ({ wch: Math.min(60, Math.max(10, ...wbRows.map((r) => String(r[i] ?? "").length))) }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, filename);
-  } catch (e) { toast(e.message); }
-}
-
 // ---------- reusable sortable + filterable table ----------
 // cols: [{key,label,num?,get?(row),render?(row)->node,nosort?}]; filters: [{key,label,get?(row),show?(value)}]
 function grid({ cols, rows, filters = [], searchIn, sort, initial = {}, onRow, rowClass, empty = "Nothing to show.", toolbar = [], maxHeight }) {
@@ -614,13 +595,8 @@ function evalResult(ev) {
   const gaps = [], untrained = [];
   for (const s of secs) for (const q of s.items) if (q.kind === "question") { if (q.performed === 0) gaps.push([s.title, q.text]); if (q.trained === 0) untrained.push([s.title, q.text]); }
   const list = (arr) => arr.length ? h("ul", { class: "gap-list" }, arr.slice(0, 40).map(([s, t]) => h("li", {}, h("b", {}, s + ": "), t.length > 140 ? t.slice(0, 140) + "…" : t)), arr.length > 40 && h("li", { class: "muted" }, `…and ${arr.length - 40} more`)) : h("p", { class: "muted" }, "None 🎉");
-  const exportXlsx = () => {
-    const rows = [["Store", `${ev.store_code} · ${ev.store_name}`], ["Trainer", `${ev.trainer_name || ""} (${ev.trainer_employee_id || ""})`], ["Staff", ev.staff_name], ["Position", ev.position_name], ["Date", ev.submitted_at], [],
-      ["Section", "Task", "Received training", "Performed"]];
-    for (const s of ev.sections) { if (s.skipped) { rows.push([s.title, "(not applicable)", "", ""]); continue; } for (const q of s.items) if (q.kind === "question") rows.push([s.title, q.text, q.trained ? "Yes" : "No", q.performed ? "Yes" : "No"]); }
-    rows.push([], ["Overall score", `${score}/${max}`, `${p}%`], ["Areas for improvement", ev.improvement_notes || ""]);
-    download(rows, `evaluation-${ev.staff_name.replace(/\W+/g, "_")}-${ev.id}.xlsx`, "Evaluation");
-  };
+  const exportXlsx = () => reportEval(ev);
+
   const isAdmin = session.role === "admin";
   const visitHref = `#/visit/${ev.visit_id}`;
   return shell(h("div", {},
@@ -838,7 +814,7 @@ async function adminTrainer(id) {
   const g = grid({
     rows: visits, searchIn: (v) => `${v.store_code} ${v.store_name} ${v.city || ""} ${v.notes || ""}`, filters: [{ key: "city", label: "cities" }, { key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }],
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits in this period.",
-    toolbar: [h("button", { class: "btn teal sm", onclick: () => download([["Date", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Avg score %", "Status", "Follow-up", "Notes"], ...g.rows().map((v) => [v.started_at, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.avg, v.status, v.follow_up ? "Yes" : "", v.notes || ""])], `visits-${t.employee_id}.xlsx`, "Visits") }, "Export to Excel")],
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => reportVisits(g.rows(), { title: `Store Visits · ${t.name}`, scope: `${t.name} (${t.employee_id})`, total: visits.length, file: `Visits_${t.name}`, showTrainer: false }) }, "Export to Excel")],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) }, ...MAP_COLS.slice(0, 1), { key: "city", label: "City" },
       { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Avg score", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip },
       { key: "follow_up", label: "Follow-up", render: (v) => (v.follow_up ? h("span", { class: "chip warn" }, v.follow_up_date ? fmtDate(v.follow_up_date) : "Yes") : "") }, { key: "notes", label: "Notes", render: (v) => h("span", { class: "small" }, trunc(v.notes, 80)) }],
@@ -877,8 +853,7 @@ async function adminVisits(query) {
     filters: [{ key: "trainer_name", label: "trainers" }, { key: "status", label: "statuses", show: (x) => (x === "open" ? "Open" : "Completed") }, ...MAP_FILTERS, { key: "store", label: "stores" }],
     initial: fromStore ? { store: visits.find((v) => v.store_code === fromStore)?.store } : {},
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits in this period.",
-    toolbar: [...(vMore ? [vBtn] : []), h("button", { class: "btn teal sm", onclick: async () => { if (vMore) await loadAllVisits(); download([["Date", "Trainer", "Employee ID", "Designation", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff evaluated", "Evaluations", "Avg score %", "Status", "Follow-up", "Follow-up date", "Notes"],
-      ...vg.rows().map((v) => [v.started_at, v.trainer_name, v.trainer_employee_id, v.trainer_designation, v.store_code, v.store_name, v.area_manager, v.rom, v.region, v.city, v.staff, v.evals, v.avg, v.status, v.follow_up ? "Yes" : "", v.follow_up_date || "", v.notes || ""])], `hm-visits-${ymd(new Date())}.xlsx`, "Visits"); } }, "Export to Excel")],
+    toolbar: [...(vMore ? [vBtn] : []), h("button", { class: "btn teal sm", onclick: async () => { if (vMore) await loadAllVisits(); reportVisits(vg.rows(), { scope: "All trainers", total: visits.length }); } }, "Export to Excel")],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "trainer_name", label: "Trainer", render: (v) => h("span", {}, h("b", {}, v.trainer_name), h("div", { class: "small muted" }, v.trainer_employee_id)) },
       { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) }, ...MAP_COLS,
       { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Avg score", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip },
@@ -904,8 +879,7 @@ async function adminVisits(query) {
       try {
         const keep = new Set(eg.rows().map((e) => e.id));
         const full = (await api("/evals" + rq("full=1"))).filter((e) => e.status === "submitted" && keep.has(e.id));   // full notes, only what the filters show
-        await download([["Date", "Trainer", "Employee ID", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Staff", "Staff ID", "Position", "Score", "Max", "Score %", "Training %", "Areas for improvement"],
-          ...full.map((e) => [e.submitted_at, e.trainer_name, e.trainer_employee_id, e.store_code, e.store_name, e.area_manager, e.rom, e.region, e.city, e.staff_name, e.staff_code || "", e.position_name, e.score, e.max_score, pct(e.score, e.max_score), pct(e.trained_count, e.max_score), e.improvement_notes || ""])], `hm-evaluations-${ymd(new Date())}.xlsx`, "Evaluations");
+        await reportEvals(full, { total: evals.filter((e) => e.status === "submitted").length });
       } catch (ex) { toast(ex.message); }
     };
     const eg = grid({

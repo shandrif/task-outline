@@ -112,10 +112,7 @@ async function moduleView(key) {
       rows: shown, cols, sort: { key: "created_at", dir: -1 }, empty: "No records yet. Use “+ Add record”.", onRow: (r) => ((admin || r.created_by === session.trainer.id) ? open(r) : null),
       searchIn: (r) => Object.values(r).filter((v) => typeof v === "string").join(" "),
       filters: [...["position", "nationality", "location", "topic", "product_name", "am", "rom", "region", "city"].filter((k) => cols.some((c) => c.key === k)).map((k) => ({ key: k, label: ({ position: "positions", nationality: "nationalities", location: "locations", topic: "topics", product_name: "products", am: "area managers", rom: "ROMs", region: "regions", city: "cities" })[k] })), ...(admin ? [{ key: "created_by_name", label: "trainers" }] : [])],
-      toolbar: [h("button", { class: "btn ghost sm", onclick: () => {
-        const list = g.rows(), c = cols.filter((x) => x.key !== "actions");
-        download([c.map((x) => x.label), ...list.map((r) => c.map((x) => (x.key === "kind" ? kindLabel[r.kind] : x.key === "created_at" ? (r.created_at || "").slice(0, 10) : r[x.key] ?? "")))], `${cfg.title.replace(/\W+/g, "_")}.xlsx`, cfg.title.slice(0, 30));
-      } }, "Export to Excel")],
+      toolbar: [h("button", { class: "btn teal sm", onclick: () => reportRecords(key, cfg, g.rows(), cols, { kindLabel, total: shown.length, kind }) }, "Export to Excel")],
     });
     holder.replaceChildren(
       multi && h("div", { class: "tabs", style: "margin-bottom:12px" }, [["", "All"], ...cfg.kinds.map((k) => [k.key, k.label])].map(([k, l]) => h("button", { type: "button", class: "tab" + (k === kind ? " on" : ""), onclick: () => { kind = k; draw(); } }, l, h("span", { class: "muted small" }, ` ${k ? rows.filter((r) => r.kind === k).length : rows.length}`)))),
@@ -272,8 +269,7 @@ async function svList() {
     rows, cols, sort: { key: "visit_date", dir: -1 }, onRow: (r) => (location.hash = `#/sv/${r.id}`), empty: "No store visit reports yet.",
     searchIn: (r) => `${r.report} ${r.store} ${r.area_manager || ""} ${r.rom || ""} ${r.city || ""} ${r.trainer_name || ""} ${r.branch_manager || ""}`,
     filters: [...MAP_FILTERS, ...(admin ? [{ key: "trainer_name", label: "trainers" }] : []), { key: "visit_type", label: "visit types" }, { key: "overall_rating", label: "ratings" }, { key: "follow_up", label: "follow-ups", get: (r) => (r.follow_up ? "1" : "0"), show: (v) => (v === "1" ? "Required" : "Not required") }],
-    toolbar: [h("button", { class: "btn ghost sm", onclick: () => download([["Report", "Visit date", "Store ID", "Store", "Area manager", "ROM", "Region", "City", "Visited by", "Branch manager", "Type", "Readiness %", "Quality avg %", "Overall score %", "Rating", "Follow-up"],
-      ...g.rows().map((r) => [r.report, r.visit_date, r.store_code, r.store_name, r.area_manager || "", r.rom || "", r.region || "", r.city || "", r.trainer_name || "", r.branch_manager || "", r.visit_type || "", r.readiness_pct ?? "", r.quality_avg ?? "", r.overall_score ?? "", r.overall_rating || "", r.follow_up ? "Yes" : "No"])], "Store_Visit_Reports.xlsx", "Store visits") }, "Export to Excel")],
+    toolbar: [h("button", { class: "btn teal sm", onclick: () => reportSv(g.rows(), { total: rows.length }) }, "Export to Excel")],
   });
   const groups = [["store", "Store"], ["area_manager", "Area manager"], ["rom", "ROM"], ["region", "Region"], ["city", "City"], ["visit_type", "Visit type"], ...(admin ? [["trainer_name", "Visited by"]] : [])];
   const per = periodText(), nStores = new Set(rows.map((r) => r.store_id)).size, rrow = (r) => [r.report, fmtDay(r.visit_date), r.store, r.trainer_name || "", r.overall_score == null ? "—" : `${r.overall_score}%`, r.readiness_pct == null ? "—" : `${r.readiness_pct}%`];

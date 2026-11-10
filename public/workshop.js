@@ -168,220 +168,47 @@ async function wsForm(rec, onSaved) {
   });
 }
 
-// ================= branded Excel report =================
-// ExcelJS (styled workbooks) is only fetched the first time someone exports.
-let excelJsReady;
-const loadExcelJs = () => (window.ExcelJS ? Promise.resolve() : (excelJsReady ||= new Promise((resolve, reject) => {
-  const el = document.createElement("script"); el.src = "/vendor/exceljs.min.js";
-  el.onload = resolve; el.onerror = () => { excelJsReady = null; reject(new Error("Could not load the Excel exporter — check your connection")); };
-  document.head.append(el);
-})));
-
-const XC = { bg: "F5EDE3", card: "FBF7F1", ink: "1D1B17", tan: "D4B38B", teal: "84C6B2", good: "2B8A74", bad: "C2564A", line: "E4D6C2", muted: "6F675B", white: "FFFFFF" };
-const XFONT = "Arial";
-const xFill = (c) => ({ type: "pattern", pattern: "solid", fgColor: { argb: "FF" + c } });
-const xFont = (o = {}) => ({ name: XFONT, size: o.size || 10, bold: !!o.bold, italic: !!o.italic, color: { argb: "FF" + (o.color || XC.ink) } });
-const xBorder = (c = XC.line) => ({ top: { style: "thin", color: { argb: "FF" + c } }, bottom: { style: "thin", color: { argb: "FF" + c } }, left: { style: "thin", color: { argb: "FF" + c } }, right: { style: "thin", color: { argb: "FF" + c } } });
-const ST_X = { open: { fill: "F1E4D2", font: "8A6633" }, ongoing: { fill: "DCEFE8", font: "1F6E5C" }, completed: { fill: "2B8A74", font: "FFFFFF" } };
-const xDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d)); };
-const xStamp = (s) => (s ? new Date(s.replace(" ", "T") + "Z") : null);
-const bar = (p, w = 10) => (p == null ? "" : "█".repeat(Math.round((p / 100) * w)) + "░".repeat(w - Math.round((p / 100) * w)));
-
-async function wsExport(rows, admin) {
-  try {
-    toast("Preparing Excel report…");
-    await loadExcelJs();
-    const logo = await fetch("/logo.png").then((r) => r.blob()).then((b) => new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); })).catch(() => null);
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "HM Training Division"; wb.created = new Date();
-    const logoId = logo ? wb.addImage({ base64: logo, extension: "png" }) : null;
-    const who = admin ? "Admin" : session.trainer.name;
-    const period = wsPeriodText();
-    const generated = new Date().toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
-    const trainerOf = (r) => r.trainer_name || r.created_by_name || "—";
-
-    // ---------- 1. Dashboard ----------
-    const ws = wb.addWorksheet("Dashboard", { properties: { tabColor: { argb: "FF" + XC.ink } }, views: [{ showGridLines: false }], pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } } });
-    ws.columns = [{ width: 2 }, ...Array(10).fill({ width: 13.5 }), { width: 2 }];
-    for (let r = 1; r <= 4; r++) for (let c = 1; c <= 12; c++) ws.getCell(r, c).fill = xFill(XC.bg);
-    ws.getRow(1).height = 16; ws.getRow(2).height = 30; ws.getRow(3).height = 20; ws.getRow(4).height = 14;
-    if (logoId != null) ws.addImage(logoId, { tl: { col: 1, row: 0.6 }, ext: { width: 128, height: 58 }, editAs: "oneCell" });
-    ws.mergeCells("D2:K2"); ws.getCell("D2").value = "Workshop / Projects Report";
-    ws.getCell("D2").font = xFont({ size: 20, bold: true }); ws.getCell("D2").alignment = { vertical: "middle" };
-    ws.mergeCells("D3:K3"); ws.getCell("D3").value = `Training Division  ·  ${period}  ·  ${admin ? "All trainers" : who}  ·  Generated ${generated}`;
-    ws.getCell("D3").font = xFont({ size: 10, color: XC.muted }); ws.getCell("D3").alignment = { vertical: "top" };
-    for (let c = 2; c <= 3; c++) ws.getCell(5, c).fill = xFill(XC.tan);
-    ws.getRow(5).height = 5;
-
-    let row = 7;
-    const total = rows.length, cnt = (list, s) => list.filter((r) => r.status === s).length;
-    const done = cnt(rows, "completed"), rate = total ? Math.round((100 * done) / total) : null;
-    const tiles = [
-      [total, "Total entries", XC.ink, XC.bg, XC.tan],
-      [cnt(rows, "open"), "Open", XC.tan, XC.ink, XC.ink],
-      [cnt(rows, "ongoing"), "Ongoing", XC.teal, XC.ink, XC.ink],
-      [done, "Completed", XC.good, XC.white, XC.white],
-      [rate == null ? "—" : rate / 100, "Completion rate", XC.card, XC.ink, XC.muted],
-    ];
-    tiles.forEach(([v, l, bg, fg, lc], i) => {
-      const c1 = 2 + i * 2, c2 = c1 + 1;
-      ws.mergeCells(row, c1, row + 1, c2); ws.mergeCells(row + 2, c1, row + 2, c2);
-      const vc = ws.getCell(row, c1), lc_ = ws.getCell(row + 2, c1);
-      vc.value = v; vc.font = xFont({ size: 24, bold: true, color: fg }); vc.alignment = { horizontal: "center", vertical: "middle" };
-      if (i === 4 && typeof v === "number") vc.numFmt = "0%";
-      lc_.value = l.toUpperCase(); lc_.font = xFont({ size: 8.5, bold: true, color: lc }); lc_.alignment = { horizontal: "center", vertical: "middle" };
-      for (let r = row; r <= row + 2; r++) for (let c = c1; c <= c2; c++) { ws.getCell(r, c).fill = xFill(bg); if (bg === XC.card) ws.getCell(r, c).border = xBorder(); }
-    });
-    ws.getRow(row).height = 22; ws.getRow(row + 1).height = 22; ws.getRow(row + 2).height = 18;
-    row += 5;
-
-    const heading = (text, note) => {
-      ws.mergeCells(row, 2, row, 11);
-      const c = ws.getCell(row, 2);
-      c.value = { richText: [{ text, font: xFont({ size: 13, bold: true }) }, ...(note ? [{ text: `   ${note}`, font: xFont({ size: 9, color: XC.muted }) }] : [])] };
-      c.border = { bottom: { style: "medium", color: { argb: "FF" + XC.tan } } };
-      ws.getRow(row).height = 22; row += 1;
-    };
-    // a table: heads [[label, span]], body rows of cell specs
-    const table = (heads, body, empty = "Nothing in this period.") => {
-      let c = 2;
-      for (const [label, span = 1, align = "center"] of heads) {
-        if (span > 1) ws.mergeCells(row, c, row, c + span - 1);
-        const cell = ws.getCell(row, c);
-        cell.value = label; cell.font = xFont({ size: 9, bold: true, color: XC.bg }); cell.alignment = { horizontal: align, vertical: "middle", wrapText: true };
-        for (let k = c; k < c + span; k++) ws.getCell(row, k).fill = xFill(XC.ink);
-        c += span;
-      }
-      ws.getRow(row).height = 20; row++;
-      if (!body.length) { ws.mergeCells(row, 2, row, 11); const e = ws.getCell(row, 2); e.value = empty; e.font = xFont({ italic: true, color: XC.muted }); e.alignment = { horizontal: "center" }; row += 2; return; }
-      body.forEach((cells, i) => {
-        let c = 2;
-        cells.forEach((spec, j) => {
-          const [v, o = {}] = Array.isArray(spec) ? spec : [spec];
-          const span = heads[j][1] || 1;
-          if (span > 1) ws.mergeCells(row, c, row, c + span - 1);
-          const cell = ws.getCell(row, c);
-          cell.value = v ?? "";
-          cell.font = xFont({ bold: o.bold, color: o.color, size: o.size });
-          cell.alignment = { horizontal: o.align || heads[j][2] || "center", vertical: "middle", wrapText: !!o.wrap };
-          if (o.numFmt) cell.numFmt = o.numFmt;
-          for (let k = c; k < c + span; k++) {
-            const x = ws.getCell(row, k);
-            x.fill = xFill(o.fill || (i % 2 ? XC.card : XC.white));
-            x.border = { bottom: { style: "hair", color: { argb: "FF" + XC.line } } };
-          }
-          c += span;
-        });
-        ws.getRow(row).height = 18; row++;
-      });
-      row++;
-    };
-    const statusSpec = (s) => [WS_STATUS_LABEL[s], { fill: ST_X[s].fill, color: ST_X[s].font, bold: true }];
-    const pctSpec = (p) => [p == null ? "—" : p / 100, { numFmt: "0%", bold: true, color: p == null ? XC.muted : p >= 85 ? XC.good : p >= 50 ? "8A6633" : XC.bad }];
-    const barSpec = (p) => [bar(p), { color: XC.good, align: "left", size: 9 }];
-
-    heading("By section", "how many entries, and how far along they are");
-    table([["Section", 3, "left"], ["Entries"], ["Open"], ["Ongoing"], ["Completed"], ["Completed %"], ["Progress", 2, "left"]],
-      WS_TABS.map((t) => {
-        const l = rows.filter((r) => r.section === t.key), p = l.length ? Math.round((100 * cnt(l, "completed")) / l.length) : null;
-        return [[t.plural, { bold: true, align: "left" }], l.length, cnt(l, "open"), cnt(l, "ongoing"), cnt(l, "completed"), pctSpec(p), barSpec(p)];
-      }));
-
-    const trainers = [...new Set(rows.map(trainerOf))];
-    if (admin || trainers.length > 1) {
-      heading("By trainer", "who logged what — sorted by most entries");
-      table([["Trainer", 2, "left"], ["Employee ID"], ["Workshops"], ["Projects"], ["Weekly"], ["Upcoming"], ["Total"], ["Completed %"], ["Progress", 1, "left"]],
-        trainers.map((name) => {
-          const l = rows.filter((r) => trainerOf(r) === name), p = l.length ? Math.round((100 * cnt(l, "completed")) / l.length) : null;
-          return { name, l, p };
-        }).sort((a, b) => b.l.length - a.l.length || a.name.localeCompare(b.name)).map(({ name, l, p }) => [
-          [name, { bold: true, align: "left" }], l[0].trainer_employee_id || "—",
-          ...WS_TABS.map((t) => l.filter((r) => r.section === t.key).length), [l.length, { bold: true }], pctSpec(p), barSpec(p),
-        ]));
-    }
-
-    const pending = rows.filter((r) => r.status !== "completed" && (r.section === "workshop" || r.section === "project")).sort((a, b) => a.entry_date.localeCompare(b.entry_date));
-    heading("Still open or ongoing", `workshops and projects not completed yet — oldest first${pending.length > 15 ? ` (15 of ${pending.length} shown; see the section sheets for all)` : ""}`);
-    table([["Date", 1], ["Section"], ["Name", 3, "left"], ["Trainer", 2, "left"], ["Status"], ["Days since", 2]],
-      pending.slice(0, 15).map((r) => [[xDate(r.entry_date), { numFmt: "dd mmm yyyy" }], WS_BY[r.section].label, [r.title || "", { align: "left", bold: true }], [trainerOf(r), { align: "left" }], statusSpec(r.status), wsDays(r.entry_date)]),
-      "Everything is completed. 🎉");
-
-    const months = [...new Set(rows.map((r) => r.entry_date.slice(0, 7)))].sort().reverse().slice(0, 12);
-    const maxM = Math.max(1, ...months.map((m) => rows.filter((r) => r.entry_date.startsWith(m)).length));
-    heading("Activity by month", "entries per month, by date entered on the form");
-    table([["Month", 2, "left"], ["Workshops"], ["Projects"], ["Weekly"], ["Upcoming"], ["Total"], ["Volume", 3, "left"]],
-      months.map((m) => {
-        const l = rows.filter((r) => r.entry_date.startsWith(m));
-        return [[new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" }), { bold: true, align: "left" }], ...WS_TABS.map((t) => l.filter((r) => r.section === t.key).length), [l.length, { bold: true }],
-          ["█".repeat(Math.max(1, Math.round((l.length / maxM) * 24))), { color: XC.tan, align: "left", size: 9 }]];
-      }));
-
-    ws.mergeCells(row, 2, row, 11);
-    ws.getCell(row, 2).value = "Tip: each section has its own sheet with every entry in full — use the filter arrows in the header row to sort or filter.";
-    ws.getCell(row, 2).font = xFont({ size: 9, italic: true, color: XC.muted });
-    ws.pageSetup.printArea = `A1:L${row}`;
-
-    // ---------- 2. One sheet per section ----------
-    for (const t of WS_TABS) {
+// ================= branded Excel report (shared builder in report.js) =================
+const WS_XS = { open: { label: "Open", fill: "F1E4D2", font: "8A6633" }, ongoing: { label: "Ongoing", fill: "DCEFE8", font: "1F6E5C" }, completed: { label: "Completed", fill: "2B8A74", font: "FFFFFF" } };
+function wsExport(rows, admin) {
+  const trainerOf = (r) => r.trainer_name || r.created_by_name || "—";
+  const cnt = (l, s) => l.filter((r) => r.status === s).length;
+  const rateOf = (l) => (l.length ? Math.round((1000 * cnt(l, "completed")) / l.length) / 10 : null);
+  const total = rows.length, rate = rateOf(rows);
+  const multi = admin || new Set(rows.map(trainerOf)).size > 1;
+  const stCell = (s) => ({ v: WS_STATUS_LABEL[s], bold: true, fill: WS_XS[s].fill, color: WS_XS[s].font });
+  const pending = rows.filter((r) => r.status !== "completed" && WS_BY[r.section].titled).sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+  const months = [...new Set(rows.map((r) => r.entry_date.slice(0, 7)))].sort().reverse().slice(0, 12);
+  const maxM = Math.max(1, ...months.map((m) => rows.filter((r) => r.entry_date.startsWith(m)).length));
+  return hmReport({
+    file: xFileName("Workshop_Projects"), title: "Workshop / Projects Report", period: wsPeriodText(), scope: admin ? "All trainers" : session.trainer.name,
+    kpis: [
+      { label: "Total entries", value: total, tone: "ink" }, { label: "Open", value: cnt(rows, "open"), tone: "tan" }, { label: "Ongoing", value: cnt(rows, "ongoing"), tone: "teal" },
+      { label: "Completed", value: cnt(rows, "completed"), tone: "good" }, { label: "Completion rate", value: rate, pct: true, tone: "card" },
+    ],
+    sections: [
+      { title: "By section", note: "how many entries, and how far along they are", cols: [["Section", 3, "left"], ["Entries", 1], ["Open", 1], ["Ongoing", 1], ["Completed", 1], ["Completed %", 1], ["Progress", 2, "left"]],
+        rows: WS_TABS.map((t) => { const l = rows.filter((r) => r.section === t.key), p = rateOf(l); return [cName(t.plural), l.length, cnt(l, "open"), cnt(l, "ongoing"), cnt(l, "completed"), cPct(p), cBar(p)]; }) },
+      multi && { title: "By trainer", note: "who logged what — most entries first", cols: [["Trainer", 2, "left"], ["Employee ID", 1], ["Workshops", 1], ["Projects", 1], ["Weekly", 1], ["Upcoming", 1], ["Total", 1], ["Completed %", 1], ["Progress", 1, "left"]],
+        rows: [...new Set(rows.map(trainerOf))].map((n) => ({ n, l: rows.filter((r) => trainerOf(r) === n) })).sort((a, b) => b.l.length - a.l.length || a.n.localeCompare(b.n))
+          .map(({ n, l }) => { const p = rateOf(l); return [cName(n), l[0].trainer_employee_id || "—", ...WS_TABS.map((t) => l.filter((r) => r.section === t.key).length), { v: l.length, bold: true }, cPct(p), cBar(p)]; }) },
+      { title: "Still open or ongoing", note: `workshops and projects not completed yet — oldest first${pending.length > 15 ? ` · 15 of ${pending.length}` : ""}`, cols: [["Date", 1], ["Section", 1], ["Name", 3, "left"], ["Trainer", 2, "left"], ["Status", 1], ["Days since", 2]],
+        rows: pending.slice(0, 15).map((r) => [cDay(r.entry_date), WS_BY[r.section].label, cName(r.title), { v: trainerOf(r), align: "left" }, stCell(r.status), wsDays(r.entry_date)]), empty: "Everything is completed. 🎉" },
+      { title: "Activity by month", note: "entries per month, by the date on the entry", cols: [["Month", 2, "left"], ["Workshops", 1], ["Projects", 1], ["Weekly", 1], ["Upcoming", 1], ["Total", 1], ["Volume", 3, "left"]],
+        rows: months.map((m) => { const l = rows.filter((r) => r.entry_date.startsWith(m)); return [cName(new Date(`${m}-01T00:00:00`).toLocaleDateString(undefined, { month: "long", year: "numeric" })), ...WS_TABS.map((t) => l.filter((r) => r.section === t.key).length), { v: l.length, bold: true }, cVol(l.length, maxM, 24)]; }) },
+    ],
+    tip: "Each section has its own sheet with every entry in full — use the filter arrows in the header row to sort or filter.",
+    sheets: WS_TABS.map((t) => {
       const list = rows.filter((r) => r.section === t.key).sort((a, b) => b.entry_date.localeCompare(a.entry_date) || b.id - a.id);
-      const sh = wb.addWorksheet(t.key === "upcoming" ? "Upcoming weekly" : t.key === "weekly" ? "Weekly" : t.plural, {
-        properties: { tabColor: { argb: "FF" + (t.titled ? XC.tan : XC.teal) } },
-        views: [{ state: "frozen", ySplit: 4, showGridLines: false }],
-        pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, printTitlesRow: "4:4" },
-      });
-      const cols = [
-        ["#", 5, "center"], ["Date", 13, "center"], ...(admin || trainers.length > 1 ? [["Trainer", 22, "left"], ["Employee ID", 12, "center"]] : []),
-        ...(t.titled ? [[t.nameLabel, 28, "left"]] : []), [t.textLabel, 70, "left"], ["Status", 13, "center"], ["Entered", 13, "center"], ["Last updated", 13, "center"],
-      ];
-      sh.columns = cols.map(([, w]) => ({ width: w }));
-      const last = cols.length;
-      sh.mergeCells(1, 1, 1, last);
-      const tc = sh.getCell(1, 1);
-      tc.value = { richText: [{ text: `${t.plural}`, font: xFont({ size: 16, bold: true, color: XC.bg }) }, { text: `    ${list.length} entr${list.length === 1 ? "y" : "ies"}  ·  ${cnt(list, "open")} open  ·  ${cnt(list, "ongoing")} ongoing  ·  ${cnt(list, "completed")} completed`, font: xFont({ size: 10, color: XC.tan }) }] };
-      tc.alignment = { vertical: "middle", indent: 1 };
-      for (let c = 1; c <= last; c++) sh.getCell(1, c).fill = xFill(XC.ink);
-      sh.getRow(1).height = 34;
-      sh.mergeCells(2, 1, 2, last);
-      sh.getCell(2, 1).value = `HM Training Division  ·  ${period}  ·  Generated ${generated}`;
-      sh.getCell(2, 1).font = xFont({ size: 9, color: XC.muted }); sh.getCell(2, 1).alignment = { indent: 1, vertical: "middle" };
-      for (let c = 1; c <= last; c++) sh.getCell(2, c).fill = xFill(XC.bg);
-      sh.getRow(2).height = 18;
-      const hr = sh.getRow(4);
-      cols.forEach(([label, , align], i) => {
-        const c = hr.getCell(i + 1);
-        c.value = label; c.font = xFont({ size: 10, bold: true }); c.fill = xFill(XC.tan);
-        c.alignment = { horizontal: align, vertical: "middle" }; c.border = { bottom: { style: "medium", color: { argb: "FF" + XC.ink } } };
-      });
-      hr.height = 22;
-      if (!list.length) {
-        sh.mergeCells(5, 1, 5, last); sh.getCell(5, 1).value = "No entries in this period."; sh.getCell(5, 1).font = xFont({ italic: true, color: XC.muted }); sh.getCell(5, 1).alignment = { horizontal: "center" };
-        continue;
-      }
-      list.forEach((r, i) => {
-        const vals = [i + 1, xDate(r.entry_date), ...(admin || trainers.length > 1 ? [trainerOf(r), r.trainer_employee_id || "—"] : []), ...(t.titled ? [r.title || ""] : []), r.details, WS_STATUS_LABEL[r.status], xStamp(r.created_at), xStamp(r.updated_at) || ""];
-        const xr = sh.getRow(5 + i);
-        vals.forEach((v, j) => {
-          const c = xr.getCell(j + 1), [label, , align] = cols[j];
-          c.value = v;
-          c.font = xFont({ bold: label === t.nameLabel, color: label === "#" ? XC.muted : XC.ink });
-          c.alignment = { horizontal: align, vertical: "top", wrapText: label === t.textLabel || label === t.nameLabel };
-          c.fill = xFill(i % 2 ? XC.card : XC.white);
-          c.border = { bottom: { style: "hair", color: { argb: "FF" + XC.line } } };
-          if (label === "Date" || label === "Entered" || label === "Last updated") c.numFmt = "dd mmm yyyy";
-          if (label === "Status") { c.fill = xFill(ST_X[r.status].fill); c.font = xFont({ bold: true, color: ST_X[r.status].font }); c.alignment = { horizontal: "center", vertical: "top" }; }
-        });
-        // roughly fit tall comments
-        const lines = String(r.details).split("\n").reduce((n, s) => n + Math.max(1, Math.ceil(s.length / 85)), 0);
-        xr.height = Math.min(300, Math.max(18, lines * 13 + 6));
-      });
-      sh.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4 + list.length, column: last } };
-      const sc = cols.findIndex(([l]) => l === "Status") + 1;
-      sh.dataValidations.add(`${sh.getColumn(sc).letter}5:${sh.getColumn(sc).letter}${4 + list.length}`, { type: "list", allowBlank: false, formulae: ['"Open,Ongoing,Completed"'] });
-    }
-
-    const buf = await wb.xlsx.writeBuffer();
-    const a = h("a", { href: URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })), download: `HM_Workshop_Projects_${ymd(new Date())}.xlsx` });
-    document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-    toast("Excel report downloaded");
-  } catch (e) { toast(e.message); }
+      return { name: t.key === "upcoming" ? "Upcoming weekly" : t.key === "weekly" ? "Weekly" : t.plural, title: t.plural, tab: t.titled ? XC.tan : XC.teal, rows: list,
+        summary: `${plural(list.length, "entry", "entries")}  ·  ${cnt(list, "open")} open  ·  ${cnt(list, "ongoing")} ongoing  ·  ${cnt(list, "completed")} completed`,
+        cols: [
+          { label: "#", get: (_, i) => i + 1, type: "int", width: 5, muted: true }, { label: "Date", get: (r) => r.entry_date, type: "date" },
+          ...(multi ? [{ label: "Trainer", get: trainerOf, width: 22 }, { label: "Employee ID", get: (r) => r.trainer_employee_id || "—", width: 12 }] : []),
+          ...(t.titled ? [{ label: t.nameLabel, get: (r) => r.title, bold: true, width: 28 }] : []),
+          { label: t.textLabel, get: (r) => r.details, type: "long", width: 70 }, { label: "Status", get: (r) => r.status, type: "status", styles: WS_XS },
+          { label: "Entered", get: (r) => r.created_at, type: "datetime" }, { label: "Last updated", get: (r) => r.updated_at, type: "datetime" },
+        ] };
+    }),
+  });
 }
