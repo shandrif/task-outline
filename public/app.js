@@ -148,7 +148,7 @@ const fmtDateTime = (s) => (s ? new Date(s.replace(" ", "T") + "Z").toLocaleStri
 const daysSince = (s) => (s ? Math.floor((Date.now() - new Date(s.replace(" ", "T") + "Z")) / 864e5) : null);
 
 // ---- liquid navbar (React island, loaded after first paint; plain links are the fallback) ----
-const NAV_KEYS = { "#/home": "dashboard", "#/m/onboarding": "onboarding", "#/m/npd": "npd", "#/admin": "evaluations", "#/verify": "evaluations", "#/sv": "visits", "#/m/coaching": "coaching", "#/m/development": "growth" };
+const NAV_KEYS = { "#/home": "dashboard", "#/m/onboarding": "onboarding", "#/m/npd": "npd", "#/admin": "evaluations", "#/verify": "evaluations", "#/sv": "visits", "#/m/coaching": "coaching", "#/m/development": "growth", "#/workshop": "workshop" };
 let navHost = null, navApi = null, navRole = null, navLinks = [];
 function syncNav(links, activeIdx) {
   navLinks = links;
@@ -168,7 +168,7 @@ function shell(content, active) {
   const admin = session.role === "admin";
   if (active === "#/") active = "#/verify";
   const ver = admin ? "#/admin" : "#/verify";
-  const links = [["#/home", "Dashboard"], ["#/m/onboarding", "Onboarding"], ["#/m/npd", "NPD"], [ver, "Verification"], ["#/sv", "Store visit"], ["#/m/coaching", "Coaching"], ["#/m/development", "People dev"]];
+  const links = [["#/home", "Dashboard"], ["#/m/onboarding", "Onboarding"], ["#/m/npd", "NPD"], [ver, "Verification"], ["#/sv", "Store visit"], ["#/m/coaching", "Coaching"], ["#/m/development", "People dev"], ["#/workshop", "Workshop"]];
   const inVerify = VERIFY_SUB.has(active);
   const idx = Math.max(0, links.findIndex(([href]) => href === (inVerify ? ver : active)));
   const sub = inVerify ? (admin
@@ -1064,6 +1064,7 @@ async function renderRouteInner() {
   try {
     if (path === "/home" || path === "/") view = await homeView();
     else if ((m = path.match(/^\/m\/(onboarding|npd|coaching|development)$/))) view = await moduleView(m[1]);
+    else if (path === "/workshop") view = await workshopView();
     else if (path === "/sv") view = await svList();
     else if (path === "/sv/new") view = await svForm(null);
     else if ((m = path.match(/^\/sv\/(\d+)\/edit$/))) view = await svForm(m[1]);

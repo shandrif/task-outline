@@ -2,6 +2,7 @@
 // Trainers sign up, visit stores and evaluate staff; the admin sees everything. Static front-end lives in /public.
 
 import { moduleRoutes } from "./modules.js";
+import { workshopRoutes } from "./workshop.js";
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
@@ -431,6 +432,9 @@ async function handle(request, env, ctx) {
     const r = await moduleRoutes({ path, method, url, env, session, isAdmin, from, to, body, bad, HttpError, json, str });
     if (r) return r;
   }
+
+  // --- workshop / projects (own table; not part of any dashboard) ---
+  if (path === "/api/workshop" || path.startsWith("/api/workshop/")) return workshopRoutes({ path, method, url, env, session, isAdmin, body, bad, HttpError, json, str });
 
   // --- shared reads ---
   if (path === "/api/positions" && method === "GET") return json(await listPositions(env));

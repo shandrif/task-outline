@@ -18,6 +18,7 @@ const ICONS: Record<string, { icon: React.ReactNode; fx: LiquidNavItem["fx"] }> 
   npd: { fx: "wave", icon: svg(<><path d="M9.5 4h5" /><path d="M10.5 4v5.3L5.7 17.6A2 2 0 0 0 7.4 20.6h9.2a2 2 0 0 0 1.7-3L13.5 9.3V4" /><path d="M8.5 15h7" /></>) },
   coaching: { fx: "glow", icon: svg(<><path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h-.5A2.5 2.5 0 0 1 4 12.5" /><path d="M8.5 8.5h7M8.5 11.5h4.5" /></>) },
   growth: { fx: "pop", icon: svg(<><path d="M4 19h4.5v-4.5H13V10h4.5V5.5H20" /><path d="M4 19h16" /></>) },
+  workshop: { fx: "wave", icon: svg(<><rect x="3.5" y="5" width="17" height="11" rx="2" /><path d="M8 20h8M12 16v4" /><path d="m7.5 12.5 3-3 2.5 2.5 3.5-4" /></>) },
   add: { fx: "spin", icon: svg(<><circle cx="12" cy="12" r="8.5" /><path d="M12 8.2v7.6M8.2 12h7.6" /></>) },
 }
 
