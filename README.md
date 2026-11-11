@@ -16,7 +16,7 @@ There is no monthly limit — trainers can visit and evaluate as often as needed
 - **Dashboard** — visits, stores visited and coverage %, evaluations, average score, per-trainer table, weakest training areas, trainers' notes, roll-up by area manager / ROM / region / city, and stores by last visit (never / over 90 days…). Period filter (today, 7/30 days, this month, custom).
 - **Trainers** — approve/reject sign-ups, disable, reset password, edit; click a trainer for every visit, stores, staff, scores and notes.
 - **Visits** — all visits and all staff evaluations, sortable/filterable, Excel export, delete.
-- **Stores** — add, rename, edit or disable any store. Area manager / ROM / region / city refresh weekly from the shared mapping file; stores edited or added by hand are never overwritten.
+- **Stores** — add, rename, edit or disable any store. Area manager / ROM / city refresh weekly from the Span of Control and master mapping files (see below); stores edited or added by hand are never overwritten.
 - **Questions** — add, edit, reorder, remove tasks, sections and positions.
 
 Scoring follows the workbook: each *Performed = Yes* scores 1; section % and overall % = score ÷ number of questions. Sections can be marked *Not applicable*.
@@ -56,8 +56,15 @@ Typical load is far below the free limits (Workers 100,000 requests/day · D1 5 
 - **Verification**: the original SBS evaluation. Barista and Beverages are now one position, **Barista verification**, with a search bar for drinks (migration `0008`, existing evaluations keep their answers).
 - **Store visit** reports (`sv_reports`): the Half Million Store Visit Report form — readiness, quality check, team performance, highlights, action plan, overall assessment, printable as PDF.
 
-## Store mapping sync
+## Store mapping sync (weekly, Sunday morning)
 
-The weekly sync reads the shared **Master_Location_Mapping.xlsx** (sheet `Location_Mapping`): `node scripts/sync-mapping.mjs <file.tsv> --master [--dry-run]`.
-Existing stores get only their **Area Manager and ROM** updated (name, region and city stay as maintained here); stores that are new to the app are added with the file's name, region and city;
-nothing is ever disabled; stores locked by hand in the admin Stores page are skipped. `B01` and `B1` are treated as the same store. A scheduled task runs it every Sunday ~07:07 (Riyadh).
+A scheduled Claude task runs every **Sunday at 06:56 Riyadh time**. It reads two SharePoint files with the Microsoft 365 connector and runs
+`node scripts/soc-sync.mjs <soc-read.txt> <master-read.txt> [--dry-run] [--local]`:
+
+- **Area Manager and ROM** come from *UPDATED Span of control (Store Level).xlsx*, sheet **New**.
+- **City** comes from *Master_Location_Mapping.xlsx*, sheet **Location_Mapping**.
+- **Region is not synced**: the app keeps its own regions (Riyadh / Western / Eastern / North / South). A brand-new store gets its region from the master file's province.
+- Store names are never changed, stores locked by hand on the Stores page are skipped, and nothing is ever disabled or deleted.
+- Rows are matched by store code; when a code is missing, repeated or unknown (e.g. "B72 - ABHA DABAB" is B74 in the app) an exact name match is used, and anything still unclear is skipped and reported.
+- New stores are added only when the master file also lists them. The script refuses to run on a file that looks wrong (missing sheet or columns, fewer than 60 branches).
+- Every run is recorded in `sync_log`.
