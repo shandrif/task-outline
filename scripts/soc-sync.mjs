@@ -43,6 +43,7 @@ function sheet(text, name, mustHave) {
   while (hi < lines.length && !mustHave.every((h) => lines[hi].split("\t").map(clean).includes(h))) { if (lines[hi].startsWith("## Sheet")) return null; hi++; }
   if (hi >= lines.length) return null;
   const head = lines[hi].split("\t").map(clean);
+  const declared = +((lines[start].match(/—\s*(\d+)\s+rows/) || [])[1] || 0);   // "## Sheet: New — 104 rows × 7 columns"
   const rows = [];
   for (const l of lines.slice(hi + 1)) {
     if (l.startsWith("## Sheet") || l.startsWith("Formulas:") || l.startsWith("[")) break;
@@ -50,12 +51,14 @@ function sheet(text, name, mustHave) {
     const c = l.split("\t");
     rows.push(Object.fromEntries(head.map((h, i) => [h, clean(c[i])])));
   }
+  rows.declared = declared ? declared - (hi - start) : 0;              // data rows the sheet says it has (header rows excluded)
   return rows;
 }
 
 // ---------- read the two files ----------
 const soc = sheet(readFileSync(socFile, "utf8"), "New", ["BRANCH NAME", "AREA MANAGER", "REGIONAL MANAGER"]);
 if (!soc) refuse(`sheet "New" with columns BRANCH NAME / AREA MANAGER / REGIONAL MANAGER not found in ${socFile}`);
+if (soc.declared && soc.length !== soc.declared) refuse(`the "New" sheet says it has ${soc.declared} rows but ${soc.length} were found — the saved text is incomplete`);
 const master = sheet(readFileSync(masterFile, "utf8"), "Location_Mapping", ["SYRVE_CODE", "CITY", "REGION"]);
 if (!master) refuse(`sheet "Location_Mapping" with columns SYRVE_CODE / CITY / REGION not found in ${masterFile}`);
 
@@ -114,6 +117,14 @@ const final = resolved.filter((r) => taken.get(r.key).length === 1);
 const people = new Map();
 for (const r of socRows) if (r.emp) people.set(r.emp, [...(people.get(r.emp) || []), r.raw]);
 for (const [emp, rs] of people) if (rs.length > 1) warnings.push(`employee ${emp} is store in-charge for ${rs.length} stores: ${rs.join(" · ")}`);
+
+// a manager name that is new to the app and used for only one store may be a typo: report it
+const known = new Set(app.flatMap((s) => [s.area_manager, s.rom]).filter(Boolean).map((x) => clean(x).toUpperCase()));
+for (const field of ["am", "rom"]) {
+  const count = new Map(); for (const r of final) { const k = r[field].toUpperCase(); count.set(k, (count.get(k) || 0) + 1); }
+  for (const r of final) if (r[field] && !known.has(r[field].toUpperCase()) && count.get(r[field].toUpperCase()) === 1)
+    warnings.push(`check spelling: ${field === "am" ? "Area Manager" : "ROM"} “${r[field]}” (${r.raw}) is new and used for only one store`);
+}
 
 // ---------- build changes ----------
 const sql = [], changes = [], added = [];
