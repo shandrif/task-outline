@@ -13,6 +13,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const nl = (s) => esc(s).replace(/\r?\n/g, "<br>");
 const has = (v) => v !== null && v !== undefined && String(v).trim() !== "";
 const dmy = (d) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d || "");
+// greeting addresses the store the report is about, e.g. "Hi Team JEDDAH REHAB"
+const greet = (r) => (has(r.store_name) ? `Team ${String(r.store_name).trim()}` : "team");
 const svNo = (id) => `SV-${String(id).padStart(4, "0")}`;
 const pctColor = (p) => (p == null ? "#6F675B" : p >= 85 ? "#2B8A74" : p >= 65 ? "#8A6633" : "#C2564A");
 
@@ -61,7 +63,7 @@ export function buildEmail(r, { note = "", recognise = [], senderName, senderTit
   rows += `<tr><td bgcolor="#D4B38B" style="background:#D4B38B;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>`;
   rows += `<tr><td style="padding:26px 28px 0;"><div style="${F}font-size:21px;font-weight:bold;color:#1D1B17;">Store Visit Report &amp; Training Feedback</div>` +
     `<div style="${F}font-size:12px;color:#6F675B;padding-top:4px;">Report ${svNo(r.id)}${r.visit_type ? ` · ${esc(r.visit_type)} visit` : ""}</div></td></tr>`;
-  rows += `<tr><td style="padding:18px 28px 0;${F}font-size:14px;line-height:1.6;color:#1D1B17;">Hi ${esc(has(r.branch_manager) ? r.branch_manager : "team")},<br>Please find below the summary of the store visit for your review.` +
+  rows += `<tr><td style="padding:18px 28px 0;${F}font-size:14px;line-height:1.6;color:#1D1B17;">Hi ${esc(greet(r))},<br>Please find below the summary of the store visit for your review.` +
     (has(note) ? `<div style="padding-top:12px;font-style:italic;color:#4A443B;">${nl(note)}</div>` : "") + `</td></tr>`;
   rows += `<tr><td style="padding:18px 28px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">` +
     info("Store", esc(store), "Date", esc(dmy(r.visit_date)) + (r.visit_time ? ` · ${esc(r.visit_time)}` : "")) +
@@ -99,7 +101,7 @@ export function buildEmail(r, { note = "", recognise = [], senderName, senderTit
     `</td></tr></table></body></html>`;
 
   // plain-text version for mail apps that do not show HTML
-  const L = [`STORE VISIT REPORT & TRAINING FEEDBACK — ${svNo(r.id)}`, "", `Hi ${has(r.branch_manager) ? r.branch_manager : "team"},`, "Please find below the summary of the store visit for your review."];
+  const L = [`STORE VISIT REPORT & TRAINING FEEDBACK — ${svNo(r.id)}`, "", `Hi ${greet(r)},`, "Please find below the summary of the store visit for your review."];
   if (has(note)) L.push("", note);
   L.push("", `Store: ${store}`, `Date: ${dmy(r.visit_date)}${r.visit_time ? " " + r.visit_time : ""}`, `Visited by: ${r.trainer_name || from}`, `MIC / AM: ${r.branch_manager || "—"} / ${r.area_manager || "—"}`);
   L.push(`Overall: ${r.overall_score ?? "—"}%${r.overall_rating ? " (" + r.overall_rating + ")" : ""} · Readiness: ${r.readiness_pct ?? "—"}% · Product quality: ${r.quality_avg ?? "—"}% · Team average: ${tAvg ?? "—"}%`);
