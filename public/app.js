@@ -158,6 +158,18 @@ function syncNav(links, activeIdx) {
 }
 
 const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/verify", "#/visit/new"]);
+// Left sidebar navigation (layout only; every page below it is unchanged)
+const SIDE_ICONS = {
+  "#/home": '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
+  "#/m/onboarding": '<circle cx="10" cy="8.5" r="3.4"/><path d="M3.8 19.5c.9-3.4 3.3-5 6.2-5s5.3 1.6 6.2 5"/><path d="M18 7.5v6M15 10.5h6"/>',
+  "#/m/npd": '<path d="M9.5 4h5"/><path d="M10.5 4v5.3L5.7 17.6A2 2 0 0 0 7.4 20.6h9.2a2 2 0 0 0 1.7-3L13.5 9.3V4"/><path d="M8.5 15h7"/>',
+  verify: '<rect x="5" y="4.5" width="14" height="16" rx="2.5"/><path d="M9 4.5h6V7H9z"/><path d="m8.8 13.2 2.2 2.2 4.2-4.4"/>',
+  "#/sv": '<path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0c0 5.4 6.5 11 6.5 11Z"/><circle cx="12" cy="10" r="2.4"/>',
+  "#/m/coaching": '<path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h-.5A2.5 2.5 0 0 1 4 12.5"/><path d="M8.5 8.5h7M8.5 11.5h4.5"/>',
+  "#/m/development": '<path d="M4 19h4.5v-4.5H13V10h4.5V5.5H20"/><path d="M4 19h16"/>',
+  "#/workshop": '<rect x="3.5" y="5" width="17" height="11" rx="2"/><path d="M8 20h8M12 16v4"/><path d="m7.5 12.5 3-3 2.5 2.5 3.5-4"/>',
+};
+const sideIcon = (key) => { const s = h("span", { class: "side-ico", "aria-hidden": "true" }); s.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SIDE_ICONS[key] || ""}</svg>`; return s; };
 function shell(content, active) {
   const admin = session.role === "admin";
   if (active === "#/") active = "#/verify";
@@ -168,16 +180,22 @@ function shell(content, active) {
   const sub = inVerify ? (admin
     ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
     : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
-  return h("div", {},
-    h("header", { class: "top no-print" }, h("div", { class: "top-in" },
-      h("a", { class: "brand", href: "#/home" }, logo(), h("div", {}, h("b", {}, "Training", h("br"), "Division"), h("i"))),
-      h("nav", { class: "nav" }, links.map(([href, label]) => h("a", { href, class: idx === links.findIndex((l) => l[0] === href) ? "on" : "" }, label))),
-      syncNav(links, idx),
-      h("div", { class: "who" }, h("b", {}, admin ? "Admin" : session.trainer.name), !admin && h("div", { class: "small muted" }, session.trainer.designation),
-        h("a", { href: "#", class: "muted", onclick: async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; navHost = null; navApi = null; document.body.classList.remove("nav-live"); cache.clear(); location.hash = ""; render(); } }, "Sign out")))),
-    h("main", {}, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content));
+  const signOut = async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; document.body.classList.remove("side-open"); cache.clear(); location.hash = ""; render(); };
+  const close = () => document.body.classList.remove("side-open");
+  return h("div", { class: "layout" },
+    h("div", { class: "side-top no-print" },
+      h("button", { type: "button", class: "side-burger", "aria-label": "Open menu", onclick: () => document.body.classList.add("side-open") }, h("span"), h("span"), h("span")),
+      h("a", { class: "side-top-brand", href: "#/home" }, logo(), h("b", {}, "Training Division"))),
+    h("div", { class: "side-backdrop no-print", onclick: close }),
+    h("aside", { class: "side no-print", "aria-label": "Main menu" },
+      h("a", { class: "side-brand", href: "#/home", onclick: close }, logo(), h("div", {}, h("b", {}, "Training Division"), h("span", {}, admin ? "ADMIN" : String(session.trainer.designation || "").toUpperCase()))),
+      h("nav", { class: "side-nav" }, links.map(([href, label], i) => h("a", { href, class: i === idx ? "on" : "", onclick: close, "aria-current": i === idx ? "page" : null }, sideIcon(href === ver ? "verify" : href), h("span", {}, label)))),
+      h("div", { class: "side-foot" },
+        h("div", { class: "side-who" }, admin ? "Admin" : session.trainer.name, !admin && h("span", {}, session.trainer.designation)),
+        h("button", { type: "button", class: "side-out", onclick: signOut }, "Sign out"))),
+    h("div", { class: "layout-main" },
+      h("main", {}, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content)));
 }
-
 
 // ---------- clickable number tiles: click to see how a number is worked out ----------
 const periodText = () => ({ all: "all time", today: "today", 7: "the last 7 days", 30: "the last 30 days", month: "this month" })[range.preset] || `${range.from || "the start"} to ${range.to || "today"}`;
