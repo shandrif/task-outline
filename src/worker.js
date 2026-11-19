@@ -335,7 +335,13 @@ async function aggregate(env, from, to, trainerId = null) {
     // grouped by (trainer, store) — at most trainers x stores rows — so the Worker's own loop stays tiny
     env.DB.prepare(`SELECT e.trainer_id, e.store_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx, SUM(e.trained_count) tr, COUNT(DISTINCT lower(e.staff_name)) staff
                     FROM evaluations e WHERE ${RE()} ${who} GROUP BY e.trainer_id, e.store_id`).bind(...A),
-    env.DB.prepare(`SELECT e.position_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx FROM evaluations e WHERE ${RE()} ${who} GROUP BY e.position_id`).bind(...A),
+    // per position: people verified (a person = name at a store), training received, fully trained, strong / needs coaching
+    env.DB.prepare(`SELECT e.position_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx, SUM(e.trained_count) tr,
+                      COUNT(DISTINCT e.store_id || '|' || lower(trim(e.staff_name))) staff, COUNT(DISTINCT e.store_id) stores,
+                      SUM(CASE WHEN e.trained_count >= e.max_score THEN 1 ELSE 0 END) full_trained,
+                      SUM(CASE WHEN e.score * 100 >= 85 * e.max_score THEN 1 ELSE 0 END) strong,
+                      SUM(CASE WHEN e.score * 100 < 65 * e.max_score THEN 1 ELSE 0 END) low
+                    FROM evaluations e WHERE ${RE()} ${who} GROUP BY e.position_id`).bind(...A),
     env.DB.prepare(WEAK_SQL(who)).bind(...A),
     env.DB.prepare(NOTES_SQL(who)).bind(...A),
     env.DB.prepare("SELECT (SELECT COUNT(*) FROM trainers WHERE status='pending') pending, (SELECT COUNT(*) FROM trainers WHERE status='approved') approved, (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts"),
@@ -343,7 +349,7 @@ async function aggregate(env, from, to, trainerId = null) {
 
   const T = new Map(trainers.results.map((t) => [t.id, { ...t, last_visit: t.last_visit_at, visits: 0, stores: new Set(), evaluations: 0, staff_evaluated: 0, sum_score: 0, sum_max: 0, sum_trained: 0 }]));
   const S = new Map(stores.results.map((x) => [x.id, { ...x, last_visit: x.last_visit_at, visits: 0, evaluations: 0, sum_score: 0, sum_max: 0 }]));
-  const P = new Map(positions.results.map((x) => [x.id, { id: x.id, name: x.name, evaluations: 0, sc: 0, mx: 0 }]));
+  const P = new Map(positions.results.map((x) => [x.id, { id: x.id, name: x.name, evaluations: 0, sc: 0, mx: 0, tr: 0, staff: 0, stores: 0, full_trained: 0, strong: 0, low: 0 }]));
   const tot = { visits: 0, evaluations: 0, sc: 0, mx: 0, tr: 0 };
   for (const r of visitAgg.results) {
     tot.visits += r.n;
@@ -355,7 +361,7 @@ async function aggregate(env, from, to, trainerId = null) {
     const t = T.get(r.trainer_id); if (t) { t.evaluations += r.n; t.staff_evaluated += r.staff; t.sum_score += r.sc || 0; t.sum_max += r.mx || 0; t.sum_trained += r.tr || 0; }
     const st = S.get(r.store_id); if (st) { st.evaluations += r.n; st.sum_score += r.sc || 0; st.sum_max += r.mx || 0; }
   }
-  for (const r of posAgg.results) { const p = P.get(r.position_id); if (p) { p.evaluations += r.n; p.sc += r.sc || 0; p.mx += r.mx || 0; } }
+  for (const r of posAgg.results) { const p = P.get(r.position_id); if (p) { p.evaluations += r.n; p.sc += r.sc || 0; p.mx += r.mx || 0; p.tr += r.tr || 0; p.staff += r.staff || 0; p.stores += r.stores || 0; p.full_trained += r.full_trained || 0; p.strong += r.strong || 0; p.low += r.low || 0; } }
   const r1 = (a, b) => (b ? Math.round((1000 * a) / b) / 10 : null);
   const byStore = [...S.values()];
   return {
@@ -365,7 +371,7 @@ async function aggregate(env, from, to, trainerId = null) {
       avg_pct: r1(tot.sc, tot.mx), trained_pct: r1(tot.tr, tot.mx), score: tot.sc, max: tot.mx, trained: tot.tr,
     },
     byTrainer: [...T.values()].map(({ stores: set, last_visit_at, ...t }) => ({ ...t, stores_visited: set.size })),
-    byPosition: [...P.values()].map((p) => ({ id: p.id, name: p.name, evaluations: p.evaluations, avg_pct: r1(p.sc, p.mx) })),
+    byPosition: [...P.values()].map((p) => ({ id: p.id, name: p.name, evaluations: p.evaluations, avg_pct: r1(p.sc, p.mx), trained_pct: r1(p.tr, p.mx), staff: p.staff, stores: p.stores, full_trained: p.full_trained, strong: p.strong, low: p.low })),
     byStore, weakest: weakest.results, notes: notes.results,
   };
 }
@@ -554,6 +560,16 @@ async function handle(request, env, ctx) {
   }
 
   // --- evaluations ---
+  // staff evaluated for one position in the period (same rules as the dashboard: submitted, by submission date), newest first, paged
+  if (path === "/api/evals" && method === "GET" && url.searchParams.get("position")) {
+    const pos = Math.floor(Number(url.searchParams.get("position"))) || 0;
+    return json((await env.DB.prepare(
+      `SELECT e.id,e.staff_name,e.staff_code,e.score,e.max_score,e.trained_count,e.submitted_at,e.store_id,st.name store_name,st.username store_code,t.name trainer_name
+       FROM evaluations e JOIN stores st ON st.id=e.store_id LEFT JOIN trainers t ON t.id=e.trainer_id
+       WHERE e.position_id=?4 AND (?2 IS NULL OR e.trainer_id=?2) AND e.status='submitted' AND e.submitted_at >= ?1 AND e.submitted_at < ?3 AND e.id < ?5
+       ORDER BY e.id DESC LIMIT ${PAGE}`
+    ).bind(from, isAdmin ? null : session.trainer.id, to, pos, beforeId(url)).all()).results);
+  }
   if (path === "/api/evals" && method === "GET") {
     const full = url.searchParams.get("full") === "1";
     return json((await env.DB.prepare(

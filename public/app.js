@@ -815,6 +815,7 @@ async function adminHome() {
     pageHead("Dashboard", "Trainer visits to stores, staff evaluated, and where more training is needed.", rangeBar()),
     t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, adminTiles()),
+    staffByPosition(d.byPosition),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate in the latest evaluations of this period."),
@@ -823,6 +824,82 @@ async function adminHome() {
     h("div", { class: "card" }, h("h2", {}, "Trainers’ notes on areas for improvement"), notesList(d.notes, "No notes in this period.")),
     h("div", { class: "card" }, h("h2", {}, "View by"), tabs, holder),
     h("div", { class: "card" }, h("h2", {}, "Stores — visit coverage"), h("p", { class: "muted small" }, "Sorted by oldest visit first. Filter “Never visited” or “Over 90 days” to see which stores need a trainer."), storeGrid.el)), "#/admin");
+}
+
+// "Staff verified by position": how many people of each role were evaluated, and how well trained they are
+function staffByPosition(list) {
+  const per = periodText();
+  const total = list.reduce((n, p) => n + p.staff, 0);
+  const card = (p) => {
+    if (!p.evaluations) return h("div", { class: "poscard empty" }, h("div", { class: "poscard-head" }, h("h3", {}, p.name)),
+      h("div", { class: "poscard-num" }, "0"), h("div", { class: "small muted" }, `No one verified in ${per}`));
+    const info = { title: p.name, headline: `${p.staff} staff verified · ${p.evaluations} evaluation${p.evaluations === 1 ? "" : "s"}`,
+      text: [`${p.staff} different ${p.staff === 1 ? "person was" : "people were"} evaluated as ${p.name} in ${per}, at ${p.stores} store${p.stores === 1 ? "" : "s"}. Someone evaluated twice counts once here and twice in evaluations.`,
+        `Average score ${fmtPct(p.avg_pct)}: share of tasks performed correctly. Training received ${fmtPct(p.trained_pct)}: share of tasks the staff had been trained on.`,
+        `Fully trained: ${p.full_trained} of ${p.evaluations} evaluations had training on every task. Strong (${GOOD}%+): ${p.strong}. Needs coaching (below ${WARN}%): ${p.low}.`] };
+    const el = h("div", { class: "poscard click", role: "button", tabindex: 0, title: "Click to see how these numbers are worked out" },
+      h("div", { class: "poscard-head" }, h("h3", {}, p.name)),
+      h("div", { class: "poscard-num" }, p.staff), h("div", { class: "small muted" }, "staff verified"),
+      h("div", { class: "small muted" }, `${p.evaluations} evaluation${p.evaluations === 1 ? "" : "s"} · ${p.stores} store${p.stores === 1 ? "" : "s"}`),
+      h("div", { class: "poscard-metric" }, h("div", { class: "poscard-mlabel" }, h("span", {}, "Average score"), h("b", { class: `pct ${pctClass(p.avg_pct)}` }, fmtPct(p.avg_pct))), h("div", { class: `bar ${pctClass(p.avg_pct)}` }, h("i", { style: `width:${p.avg_pct || 0}%` }))),
+      h("div", { class: "poscard-metric" }, h("div", { class: "poscard-mlabel" }, h("span", {}, "Training received"), h("b", {}, fmtPct(p.trained_pct))), h("div", { class: "bar trained" }, h("i", { style: `width:${p.trained_pct || 0}%` }))),
+      h("div", { class: "poscard-chips" },
+        h("span", { class: "chip" }, `Fully trained ${p.full_trained}/${p.evaluations}`),
+        h("span", { class: "chip good" }, `Strong ${p.strong}`),
+        h("span", { class: `chip ${p.low ? "bad" : ""}` }, `Needs coaching ${p.low}`)));
+    const go = () => positionStaff(p, info);
+    el.addEventListener("click", go); el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    return el;
+  };
+  const shown = [...list].sort((a, b) => b.staff - a.staff || b.evaluations - a.evaluations);
+  return h("div", { class: "card" },
+    h("div", { class: "row spread" }, h("h2", {}, "Staff verified by position"), h("span", { class: "chip" }, `${total} staff in total`)),
+    h("p", { class: "muted small" }, `How many people of each role were evaluated in ${per}, and how well trained they are. Click a position for details.`),
+    h("div", { class: "poscards" }, shown.map(card)));
+}
+
+// clicking a position: the people verified for it, one row per person (their latest evaluation), each opening the full evaluation
+async function positionStaff(p, info) {
+  const holder = h("div", { class: "poslist-body" }, h("p", { class: "muted" }, "Loading staff…"));
+  const body = h("div", { class: "stack poslist" },
+    h("div", { class: "ex-head" }, info.headline),
+    h("details", { class: "poslist-how" }, h("summary", {}, "How these numbers are worked out"), info.text.map((t) => h("p", { class: "small", style: "margin:6px 0 0" }, t))),
+    holder);
+  let closeFn = () => {};
+  const done = modal(`${p.name} · staff verified`, body, (close) => { closeFn = close; return [h("button", { class: "btn teal", onclick: () => close(true) }, "Close")]; });
+  try {
+    const evs = await apiPages("/evals" + rq("position=" + p.id));
+    const people = new Map();
+    for (const e of evs) {                                   // newest first, so the first one seen is the latest evaluation
+      const key = `${e.store_id}|${String(e.staff_name || "").trim().toLowerCase()}`;
+      const cur = people.get(key);
+      if (cur) { cur.times++; continue; }
+      const sc = pct(e.score, e.max_score), tr = pct(e.trained_count, e.max_score);
+      people.set(key, { ...e, times: 1, sc, tr, store: `${e.store_code} · ${e.store_name}`,
+        tag: sc != null && sc < WARN ? "Needs coaching" : e.trained_count >= e.max_score ? "Fully trained" : "Partly trained" });
+    }
+    const rows = [...people.values()];
+    const tagChip = (t) => h("span", { class: `chip ${t === "Needs coaching" ? "bad" : t === "Fully trained" ? "good" : "warn"}` }, t);
+    const g = grid({
+      rows, sort: { key: "submitted_at", dir: -1 }, maxHeight: "52vh",
+      searchIn: (r) => `${r.staff_name} ${r.staff_code || ""} ${r.store} ${r.trainer_name || ""}`,
+      filters: [{ key: "tag", label: "statuses" }, { key: "store", label: "stores" }, { key: "trainer_name", label: "trainers" }],
+      onRow: (r) => { closeFn(true); location.hash = `#/eval/${r.id}`; },
+      empty: "No staff match.",
+      cols: [
+        { key: "staff_name", label: "Staff", render: (r) => h("span", {}, h("b", {}, r.staff_name), r.staff_code && h("div", { class: "small muted" }, r.staff_code)) },
+        { key: "store", label: "Store" },
+        { key: "submitted_at", label: "Last evaluated", render: (r) => h("span", { style: "white-space:nowrap" }, fmtDate(r.submitted_at)) },
+        { key: "trainer_name", label: "Trainer" },
+        { key: "sc", label: "Score", num: true, render: (r) => avgCell(r.sc) },
+        { key: "tr", label: "Training", num: true, render: (r) => h("span", {}, fmtPct(r.tr)) },
+        { key: "times", label: "Times", num: true },
+        { key: "tag", label: "", render: (r) => tagChip(r.tag) },
+      ],
+    });
+    holder.replaceChildren(h("p", { class: "small muted", style: "margin:0 0 8px" }, `${rows.length} ${rows.length === 1 ? "person" : "people"} · click a row to open their latest evaluation`), g.el);
+  } catch (e) { holder.replaceChildren(h("p", { class: "err" }, e.message)); }
+  return done;
 }
 
 // ---------- admin: trainers ----------

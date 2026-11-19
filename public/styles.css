@@ -510,3 +510,25 @@ button.chip { cursor: pointer; border: 0; }
 .page { transition: opacity 160ms ease; }
 main.busy .page { opacity: .55; }
 @media (prefers-reduced-motion: reduce) { .side-pill { transition: none; } }
+
+/* ---------- Staff verified by position ---------- */
+.poscards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-top: 12px; }
+.poscard { background: rgba(255,255,255,.6); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.poscard.click { cursor: pointer; transition: transform 140ms ease, box-shadow 140ms ease; }
+.poscard.click:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(29,27,23,.08); }
+.poscard.click:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+.poscard.empty { opacity: .7; }
+.poscard-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.poscard-head h3 { font-size: 15.5px; }
+.poscard-num { font-size: 36px; font-weight: 900; line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.poscard-metric { display: grid; gap: 5px; margin-top: 6px; min-width: 0; }
+.poscard-mlabel { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13.5px; }
+.poscard-metric .bar { margin: 0; min-width: 0; }
+.bar.trained > i { background: var(--tan); }
+.poscard-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.poscard-chips .chip { font-size: 12px; white-space: nowrap; }
+.poscard { overflow: hidden; }
+.modal:has(.poslist) { max-width: min(1000px, 96vw); }
+.poslist-how summary { cursor: pointer; font-weight: 700; font-size: 13.5px; color: var(--muted); }
+.poslist .table-wrap { max-height: 52vh; }
+.poslist .chip { white-space: nowrap; }
