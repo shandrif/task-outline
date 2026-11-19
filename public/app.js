@@ -170,31 +170,70 @@ const SIDE_ICONS = {
   "#/workshop": '<rect x="3.5" y="5" width="17" height="11" rx="2"/><path d="M8 20h8M12 16v4"/><path d="m7.5 12.5 3-3 2.5 2.5 3.5-4"/>',
 };
 const sideIcon = (key) => { const s = h("span", { class: "side-ico", "aria-hidden": "true" }); s.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SIDE_ICONS[key] || ""}</svg>`; return s; };
-function shell(content, active) {
+// The layout (sidebar + main) is built once per signed-in user and kept; changing pages only swaps the content area,
+// so the sidebar never redraws or flashes. The highlight moves the moment a link is clicked (before the data arrives).
+let LAYOUT = null;
+const verifyHref = () => (session.role === "admin" ? "#/admin" : "#/verify");
+const sideLinks = () => [["#/home", "Dashboard"], ["#/m/onboarding", "Onboarding"], ["#/m/npd", "NPD"], [verifyHref(), "Verification"], ["#/sv", "Store visit"], ["#/m/coaching", "Coaching"], ["#/m/development", "People dev"], ["#/workshop", "Workshop"]];
+// which sidebar item a page belongs to
+function navIndexFor(active) {
+  if (!active || active === "#/") active = "#/verify";
+  const base = active.split("?")[0];
+  const links = sideLinks();
+  if (VERIFY_SUB.has(base) || /^#\/(admin|visit|eval)\b/.test(base)) return links.findIndex(([href]) => href === verifyHref());
+  if (/^#\/sv\b/.test(base)) return links.findIndex(([href]) => href === "#/sv");
+  const i = links.findIndex(([href]) => href === base);
+  return i < 0 ? 0 : i;
+}
+function sideActivate(active) {
+  if (!LAYOUT) return;
+  const idx = navIndexFor(active);
+  LAYOUT.links.forEach((a, i) => { a.classList.toggle("on", i === idx); if (i === idx) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  const a = LAYOUT.links[idx];
+  const pill = LAYOUT.pill;
+  const place = () => {
+    const first = !LAYOUT.placed;                       // first placement: jump there without sliding
+    if (first) pill.style.transition = "none";
+    pill.style.transform = `translateY(${a.offsetTop}px)`; pill.style.height = `${a.offsetHeight}px`;
+    if (first) { void pill.offsetHeight; pill.style.transition = ""; LAYOUT.placed = true; }
+  };
+  if (a.offsetHeight) place(); else requestAnimationFrame(place);
+}
+function buildLayout() {
   const admin = session.role === "admin";
-  if (active === "#/") active = "#/verify";
-  const ver = admin ? "#/admin" : "#/verify";
-  const links = [["#/home", "Dashboard"], ["#/m/onboarding", "Onboarding"], ["#/m/npd", "NPD"], [ver, "Verification"], ["#/sv", "Store visit"], ["#/m/coaching", "Coaching"], ["#/m/development", "People dev"], ["#/workshop", "Workshop"]];
-  const inVerify = VERIFY_SUB.has(active);
-  const idx = Math.max(0, links.findIndex(([href]) => href === (inVerify ? ver : active)));
-  const sub = inVerify ? (admin
-    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
-    : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
-  const signOut = async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; document.body.classList.remove("side-open"); cache.clear(); location.hash = ""; render(); };
   const close = () => document.body.classList.remove("side-open");
-  return h("div", { class: "layout" },
+  const signOut = async (e) => { e.preventDefault(); await api("/logout", { method: "POST", body: {} }); session = { role: null }; LAYOUT = null; close(); cache.clear(); location.hash = ""; render(); };
+  const pill = h("span", { class: "side-pill", "aria-hidden": "true" });
+  const links = sideLinks().map(([href, label]) => h("a", { href, onclick: () => { close(); sideActivate(href); } }, sideIcon(href === verifyHref() ? "verify" : href), h("span", {}, label)));
+  const main = h("main", {});
+  const el = h("div", { class: "layout" },
     h("div", { class: "side-top no-print" },
       h("button", { type: "button", class: "side-burger", "aria-label": "Open menu", onclick: () => document.body.classList.add("side-open") }, h("span"), h("span"), h("span")),
       h("a", { class: "side-top-brand", href: "#/home" }, logo(), h("b", {}, "Training Division"))),
     h("div", { class: "side-backdrop no-print", onclick: close }),
     h("aside", { class: "side no-print", "aria-label": "Main menu" },
       h("a", { class: "side-brand", href: "#/home", onclick: close }, logo(), h("div", {}, h("b", {}, "Training Division"), h("span", {}, admin ? "ADMIN" : String(session.trainer.designation || "").toUpperCase()))),
-      h("nav", { class: "side-nav" }, links.map(([href, label], i) => h("a", { href, class: i === idx ? "on" : "", onclick: close, "aria-current": i === idx ? "page" : null }, sideIcon(href === ver ? "verify" : href), h("span", {}, label)))),
+      h("nav", { class: "side-nav" }, pill, links),
       h("div", { class: "side-foot" },
         h("div", { class: "side-who" }, admin ? "Admin" : session.trainer.name, !admin && h("span", {}, session.trainer.designation)),
         h("button", { type: "button", class: "side-out", onclick: signOut }, "Sign out"))),
-    h("div", { class: "layout-main" },
-      h("main", {}, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content)));
+    h("div", { class: "layout-main" }, main));
+  return { el, key: `${session.role}:${session.trainer?.id || ""}`, links, pill, main };
+}
+function shell(content, active) {
+  const key = `${session.role}:${session.trainer?.id || ""}`;
+  if (!LAYOUT || LAYOUT.key !== key) LAYOUT = buildLayout();
+  if (active === "#/") active = "#/verify";
+  const admin = session.role === "admin";
+  const sub = VERIFY_SUB.has(active) ? (admin
+    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
+    : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
+  // the page itself: a fresh element each time, so only it fades in
+  const page = h("div", { class: "page" }, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content);
+  LAYOUT.main.classList.remove("busy");
+  LAYOUT.main.replaceChildren(page);
+  sideActivate(active);
+  return LAYOUT.el;
 }
 
 // ---------- clickable number tiles: click to see how a number is worked out ----------
@@ -1058,11 +1097,15 @@ async function adminStores() {
 }
 
 // ---------- router ----------
+let routeSeq = 0;
 async function renderRoute() {
+  const seq = ++routeSeq;
+  sideActivate(location.hash || "#/home");                                    // highlight moves at once
+  const busy = setTimeout(() => LAYOUT?.main.classList.add("busy"), 120);     // dim the old page only if loading takes a moment
   const slow = setTimeout(() => document.body.classList.add("loading"), 150);   // thin progress bar only if it takes a moment
-  try { await renderRouteInner(); } finally { clearTimeout(slow); document.body.classList.remove("loading"); }
+  try { await renderRouteInner(seq); } finally { if (seq === routeSeq) { clearTimeout(busy); clearTimeout(slow); document.body.classList.remove("loading"); LAYOUT?.main.classList.remove("busy"); } }
 }
-async function renderRouteInner() {
+async function renderRouteInner(seq = routeSeq) {
   const [path, qs] = (location.hash.slice(1) || "/").split("?");
   const query = new URLSearchParams(qs || "");
   let m, view;
@@ -1095,10 +1138,11 @@ async function renderRouteInner() {
     if (!session.role) return;
     view = shell(h("div", { class: "card" }, h("h2", {}, "Something went wrong"), h("p", { class: "err" }, e.message), h("a", { class: "btn ghost", href: "#/home" }, "Home")), session.role === "admin" ? "#/admin" : "#/");
   }
-  $app.replaceChildren(view);
+  if (seq !== routeSeq) return;                                                  // a newer click won: drop this result
+  if ($app.firstChild !== view) $app.replaceChildren(view);                     // the layout stays mounted between pages
   window.scrollTo(0, 0);
 }
 
-function render() { session.role ? renderRoute() : $app.replaceChildren(loginView()); }
+function render() { if (session.role) renderRoute(); else { LAYOUT = null; $app.replaceChildren(loginView()); } }
 window.addEventListener("hashchange", () => session.role && renderRoute());
 api("/me").then((s) => { session = s; render(); }).catch(() => render());

@@ -251,7 +251,8 @@ h1, h2 { text-wrap: balance; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
 @keyframes pop { from { opacity: 0; transform: scale(.96); } }
 @keyframes fade { from { opacity: 0; } }
-#app > * { animation: rise 200ms var(--ease-out); }
+/* only the page content fades in when it changes; the sidebar stays put */
+.page, #app > .login { animation: rise 200ms var(--ease-out); }
 .modal-bg { animation: fade 150ms var(--ease-out); }
 .modal { animation: pop 180ms var(--ease-out); transform-origin: center; }
 #toast { transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
@@ -472,13 +473,18 @@ button.chip { cursor: pointer; border: 0; }
 .side-brand img, .side-top-brand img { height: 30px; display: block; filter: invert(1) brightness(1.15); }
 .side-brand b { display: block; font-weight: 900; font-size: 16px; line-height: 1.15; }
 .side-brand span { display: block; font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--tan); margin-top: 3px; }
-.side-nav { display: grid; gap: 4px; }
+.side-nav { display: grid; gap: 4px; position: relative; }
+/* one highlight that slides to the current item (transform only, so it stays at 60 fps) */
+.side-pill { position: absolute; left: 0; right: 0; top: 0; height: 44px; border-radius: 12px; background: rgba(212,179,139,.18); pointer-events: none; will-change: transform;
+  transition: transform 260ms cubic-bezier(.2,.8,.2,1), height 260ms cubic-bezier(.2,.8,.2,1); }
+.side-pill::before { content: ""; position: absolute; left: -14px; top: 9px; bottom: 9px; width: 4px; border-radius: 0 4px 4px 0; background: var(--tan); }
 .side-nav a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; text-decoration: none; color: rgba(245,237,227,.86); font-weight: 700; font-size: 15.5px; position: relative; transition: background 140ms ease, color 140ms ease; }
 .side-nav a:hover { background: rgba(245,237,227,.08); color: var(--bg); }
-.side-nav a.on { background: rgba(212,179,139,.18); color: var(--bg); }
-.side-nav a.on::before { content: ""; position: absolute; left: -14px; top: 9px; bottom: 9px; width: 4px; border-radius: 0 4px 4px 0; background: var(--tan); }
+.side-nav a { z-index: 1; }
+.side-nav a.on { color: var(--bg); }
+.side-nav a.on:hover { background: transparent; }
 .side-nav a:focus-visible, .side-out:focus-visible, .side-brand:focus-visible { outline: 2px solid var(--tan); outline-offset: 2px; }
-.side-ico { display: inline-flex; color: var(--tan); }
+.side-ico { display: inline-flex; color: var(--tan); transition: color 200ms ease; }
 .side-nav a.on .side-ico { color: var(--teal); }
 .side-foot { margin-top: auto; padding: 18px 4px 0; display: grid; gap: 10px; }
 .side-who { font-size: 13.5px; font-weight: 700; color: rgba(245,237,227,.9); padding: 0 4px; overflow-wrap: anywhere; }
@@ -499,3 +505,8 @@ button.chip { cursor: pointer; border: 0; }
   body.side-open .side-backdrop { display: block; position: fixed; inset: 0; background: rgba(29,27,23,.45); z-index: 29; }
 }
 @media print { .side, .side-top, .side-backdrop { display: none !important; } }
+
+/* while the next page loads, the current one dims slightly (instant feedback, no blank screen) */
+.page { transition: opacity 160ms ease; }
+main.busy .page { opacity: .55; }
+@media (prefers-reduced-motion: reduce) { .side-pill { transition: none; } }
