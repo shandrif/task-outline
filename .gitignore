@@ -4,3 +4,8 @@ node_modules/
 *.log
 credentials-*.csv
 credentials-admin.txt
+
+# data backups (contain staff data) never go in git
+hm-backup-*
+backups-now/
+restore.sql

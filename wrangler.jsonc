@@ -24,5 +24,5 @@
   "triggers": { "crons": ["17 23 * * *"] },
   // Keep variables added in the Cloudflare dashboard (BREVO_API_KEY) when deploying; secrets and keys never go in this file.
   "keep_vars": true,
-  "vars": { "ADMIN_USERNAME": "admin", "MAIL_FROM": "training@hmreport.com", "MAIL_FROM_NAME": "HM Training Division" }
+  "vars": { "ADMIN_USERNAME": "admin", "MAIL_FROM": "training@hmreport.com", "MAIL_FROM_NAME": "HM Training Division", "APP_URL": "https://hm-staff-evaluation.magictales64.workers.dev" }
 }

@@ -3,7 +3,7 @@
 
 import { moduleRoutes } from "./modules.js";
 import { workshopRoutes } from "./workshop.js";
-import { emailBackup } from "./backup.js";
+import { emailBackup, backupFileRoute } from "./backup.js";
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
@@ -429,6 +429,7 @@ async function handle(request, env, ctx) {
   if (method !== "GET" && method !== "HEAD" && !(request.headers.get("content-type") || "").includes("application/json")) throw bad("Expected JSON");
   let m;
 
+  if (path.startsWith("/api/backup-file/") && method === "GET") { const r = await backupFileRoute(path, env); if (r) return r; throw new HttpError(404, "Not found"); }
   if (path === "/api/login" && method === "POST") return login(env, request, ctx);
   if (path === "/api/signup" && method === "POST") return signup(env, request, ctx);
   if (path === "/api/logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": cookieHeader(request, "", 0) });
@@ -682,7 +683,7 @@ async function handle(request, env, ctx) {
 
   if (path === "/api/admin/summary" && method === "GET") return json(await summary(env, from, to));
   if (path === "/api/admin/backup" && method === "POST") {
-    try { return json(await emailBackup(env, "manual")); } catch (e) { throw new HttpError(502, `The backup was not sent: ${e.message}`); }
+    try { return json(await emailBackup(env, "manual", url.origin)); } catch (e) { throw new HttpError(502, `The backup was not sent: ${e.message}`); }
   }
 
   // trainers

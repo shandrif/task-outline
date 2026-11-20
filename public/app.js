@@ -745,7 +745,7 @@ function backupCard() {
   const msg = h("span", { class: "small muted", "aria-live": "polite" });
   const btn = h("button", { class: "btn ghost sm", onclick: async () => {
     btn.disabled = true; btn.textContent = "Sending…"; msg.textContent = "";
-    try { const r = await api("/admin/backup", { method: "POST" }); msg.textContent = `✓ Backup of ${r.rows.toLocaleString("en")} rows (${r.kb} KB) emailed to ${r.to}`; }
+    try { const r = await api("/admin/backup", { method: "POST" }); msg.textContent = `✓ Backup of ${r.rows.toLocaleString("en")} rows emailed to ${r.to}. It arrives in a minute or two.`; }
     catch (e) { msg.textContent = e.message; } finally { btn.disabled = false; btn.textContent = "Email a backup now"; }
   } }, "Email a backup now");
   return h("div", { class: "card" }, h("h2", {}, "Data backup"),
