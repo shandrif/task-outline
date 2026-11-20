@@ -741,6 +741,18 @@ const lastVisitCell = (s) => (s ? h("span", {}, fmtDate(s), h("span", { class: "
 const notesList = (rows, empty) => (rows.length ? rows.map((n) => h("div", { class: "note-row" }, h("div", { class: "small muted" }, `${n.staff_name} · ${n.position} · ${n.store_code} ${n.store_name} · ${n.trainer_name || ""} · ${fmtDate(n.submitted_at)}`),
   h("a", { href: `#/eval/${n.id}`, style: "text-decoration:none;color:inherit;white-space:pre-wrap" }, trunc(n.improvement_notes, 260)))) : h("p", { class: "muted" }, empty));
 
+function backupCard() {
+  const msg = h("span", { class: "small muted", "aria-live": "polite" });
+  const btn = h("button", { class: "btn ghost sm", onclick: async () => {
+    btn.disabled = true; btn.textContent = "Sending…"; msg.textContent = "";
+    try { const r = await api("/admin/backup", { method: "POST" }); msg.textContent = `✓ Backup of ${r.rows.toLocaleString("en")} rows (${r.kb} KB) emailed to ${r.to}`; }
+    catch (e) { msg.textContent = e.message; } finally { btn.disabled = false; btn.textContent = "Email a backup now"; }
+  } }, "Email a backup now");
+  return h("div", { class: "card" }, h("h2", {}, "Data backup"),
+    h("p", { class: "muted small" }, "A full copy of the app’s data is emailed every night at 2:17 (Saudi time). Keep those emails: any one of them can restore everything as it was that night."),
+    h("div", { class: "row", style: "gap:12px;align-items:center;flex-wrap:wrap" }, btn, msg));
+}
+
 async function adminHome() {
   const d = await api("/admin/summary" + rq()), t = d.totals;
   const barRows = (rows) => rows.map((r) => h("div", { class: "secrow" },
@@ -825,7 +837,8 @@ async function adminHome() {
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "By position"), barRows(d.byPosition))),
     h("div", { class: "card" }, h("h2", {}, "Trainers’ notes on areas for improvement"), notesList(d.notes, "No notes in this period.")),
     h("div", { class: "card" }, h("h2", {}, "View by"), tabs, holder),
-    h("div", { class: "card" }, h("h2", {}, "Stores — visit coverage"), h("p", { class: "muted small" }, "Sorted by oldest visit first. Filter “Never visited” or “Over 90 days” to see which stores need a trainer."), storeGrid.el)), "#/admin");
+    h("div", { class: "card" }, h("h2", {}, "Stores — visit coverage"), h("p", { class: "muted small" }, "Sorted by oldest visit first. Filter “Never visited” or “Over 90 days” to see which stores need a trainer."), storeGrid.el),
+    backupCard()), "#/admin");
 }
 
 // "Staff verified by position": how many people of each role were evaluated, and how well trained they are

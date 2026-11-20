@@ -3,6 +3,7 @@
 
 import { moduleRoutes } from "./modules.js";
 import { workshopRoutes } from "./workshop.js";
+import { emailBackup } from "./backup.js";
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
@@ -680,6 +681,9 @@ async function handle(request, env, ctx) {
   needAdmin();
 
   if (path === "/api/admin/summary" && method === "GET") return json(await summary(env, from, to));
+  if (path === "/api/admin/backup" && method === "POST") {
+    try { return json(await emailBackup(env, "manual")); } catch (e) { throw new HttpError(502, `The backup was not sent: ${e.message}`); }
+  }
 
   // trainers
   if (path === "/api/admin/trainers" && method === "GET") {
@@ -848,5 +852,9 @@ export default {
       console.error(e);
       return json({ error: "Something went wrong" }, 500);
     }
+  },
+  // nightly backup (cron in wrangler.jsonc)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(emailBackup(env).then((r) => console.log("backup sent", JSON.stringify(r)), (e) => console.error("backup failed", e?.message || e)));
   },
 };

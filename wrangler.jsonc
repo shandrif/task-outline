@@ -20,6 +20,8 @@
   ],
   // Runs the Worker next to the database, so the several queries per request are not made across the world
   "placement": { "mode": "smart" },
+  // Nightly data backup emailed to BACKUP_TO (set in the Cloudflare dashboard); 23:17 UTC = 02:17 Riyadh
+  "triggers": { "crons": ["17 23 * * *"] },
   // Keep variables added in the Cloudflare dashboard (BREVO_API_KEY) when deploying; secrets and keys never go in this file.
   "keep_vars": true,
   "vars": { "ADMIN_USERNAME": "admin", "MAIL_FROM": "training@hmreport.com", "MAIL_FROM_NAME": "HM Training Division" }
