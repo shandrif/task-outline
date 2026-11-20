@@ -358,6 +358,7 @@ async function trainerHome() {
   return shell(h("div", {},
     pageHead(`Hello, ${session.trainer.name.split(" ")[0]}`, "Visit a store, evaluate the team, and note what needs more training.", h("a", { class: "btn teal", href: "#/visit/new" }, "+ Start store visit")),
     h("div", { class: "grid g4", style: "margin-bottom:16px" }, myTiles()),
+    trainerTopicsCard(null, true),
     open.length > 0 && h("div", { class: "card" }, h("h2", {}, "Continue where you left off"),
       h("div", { class: "grid g3", style: "margin-top:12px" }, open.map((v) => h("a", { class: "pos-card", href: `#/visit/${v.id}`, style: "text-decoration:none;color:inherit" },
         h("b", {}, v.store_name), h("span", {}, `${v.store_code} · ${v.city || ""} · started ${fmtDateTime(v.started_at)}`))))),
@@ -816,6 +817,7 @@ async function adminHome() {
     t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, adminTiles()),
     staffByPosition(d.byPosition),
+    verifyTopicsSection(),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Areas that need more training"), h("p", { class: "muted small" }, "Lowest “performed” rate in the latest evaluations of this period."),
@@ -977,6 +979,7 @@ async function adminTrainer(id) {
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Weakest areas found"), h("p", { class: "muted small" }, "Lowest “performed” rate in this trainer’s evaluations."),
         d.weakest.length ? d.weakest.map((w) => h("div", { class: "secrow" }, h("div", {}, h("b", {}, w.section), h("div", { class: "small muted" }, w.position)), h("div", { class: `bar ${pctClass(w.pct)}` }, h("i", { style: `width:${w.pct}%` })), h("span", { class: `pct ${pctClass(w.pct)}` }, fmtPct(w.pct)))) : h("p", { class: "muted" }, "Not enough evaluations yet.")),
       h("div", { class: "card", style: "margin:0" }, h("h2", {}, "Notes on areas for improvement"), notesList(d.notes, "No notes in this period."))),
+    trainerTopicsCard(id, false),
     h("div", { class: "card" }, h("h2", {}, "Visits"), g.el)), "#/admin/trainers");
 }
 

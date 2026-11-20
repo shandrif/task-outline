@@ -450,6 +450,30 @@ async function handle(request, env, ctx) {
     if (r) return r;
   }
 
+  // --- verification by topic (read-only): which topics (form sections) were verified, by whom, for how many staff, how well ---
+  // Admin: everyone, or ?trainer=<id>. Trainer: always only their own. Skipped / not-applicable sections have no result row, so they never count.
+  if (path === "/api/verify/topics" && method === "GET") {
+    const tid = isAdmin ? (Math.floor(Number(url.searchParams.get("trainer"))) || null) : session.trainer.id;
+    const A = [from, to, tid];
+    const base = `FROM eval_sections es JOIN evaluations e ON e.id=es.evaluation_id JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
+                  WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3)`;
+    const [topics, matrix, trainers, catalog] = await env.DB.batch([
+      env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, COUNT(*) staff, COUNT(DISTINCT e.trainer_id) trainers, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY s.id`).bind(...A),
+      env.DB.prepare(`SELECT e.trainer_id, s.id section_id, COUNT(*) n, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY e.trainer_id, s.id`).bind(...A),
+      env.DB.prepare(`SELECT DISTINCT t.id, t.name FROM evaluations e JOIN trainers t ON t.id=e.trainer_id WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) ORDER BY t.name COLLATE NOCASE`).bind(...A),
+      // every active topic of the positions this trainer (or anyone) evaluated in the period: lets the page show topics not verified yet
+      env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, s.sort FROM sections s JOIN positions p ON p.id=s.position_id
+                      WHERE s.active=1 AND p.active=1 AND p.id IN (SELECT DISTINCT e.position_id FROM evaluations e WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3))
+                      AND EXISTS (SELECT 1 FROM items i WHERE i.section_id=s.id AND i.active=1 AND i.kind='question') ORDER BY p.sort, s.sort`).bind(...A),
+    ]);
+    const r1 = (a, b) => (b ? Math.round((1000 * a) / b) / 10 : null);
+    return json({
+      topics: topics.results.map((t) => ({ ...t, pct: r1(t.sc, t.mx) })),
+      matrix: matrix.results.map((m) => ({ ...m, pct: r1(m.sc, m.mx) })),
+      trainers: trainers.results, catalog: catalog.results,
+    });
+  }
+
   // --- dashboard charts (read-only): weekly trend, per-store scores, weakest areas, coaching topics, workshop per trainer ---
   if (path === "/api/home/charts" && method === "GET") {
     const tid = isAdmin ? null : session.trainer.id;
