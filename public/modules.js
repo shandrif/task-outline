@@ -192,6 +192,8 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
 async function homeView() {
   const [d, { modules }] = await Promise.all([api("/home/summary" + rq()), modCfg()]);
   const admin = session.role === "admin";
+  const charts = h("div", { class: "ch-slot" }, h("div", { class: "card" }, h("p", { class: "muted", style: "margin:0" }, "Loading charts…")));
+  dashboardCharts(d, admin).then((el) => charts.replaceChildren(el));
   const recs = (mod) => d.records.filter((r) => r.module === mod);
   const tot = (rs, f) => rs.reduce((n, r) => n + r[f], 0);
   const avgOf = (rs) => { const s = tot(rs, "scored"); return s ? r1(tot(rs, "sum_pct") / s) : null; };
@@ -246,6 +248,7 @@ async function homeView() {
     admin && d.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${d.pending} trainer${d.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, masterTiles()),
     h("div", { class: "grid g3 mcards", style: "margin-top:16px" }, MODULE_ORDER.map(card)),
+    charts,
     team && h("div", { class: "card" }, h("h2", {}, "Team activity"), h("p", { class: "muted small" }, "What each trainer entered in this period."), team.el),
     h("div", { class: "card" }, h("h2", {}, "Latest activity"), recent.length ? recent : h("p", { class: "muted" }, "Nothing yet."))), "#/home");
 }

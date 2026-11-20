@@ -1,0 +1,149 @@
+/* Dashboard charts: performance trend, outcomes, trainer contributions, areas of development, store gaps, highlights.
+   Plain HTML/SVG (no library). Loaded after modules.js; uses h(), pct(), fmtPct(), periodText(). */
+"use strict";
+
+// validated categorical order (colour-blind safe on the HM card surface); activities keep their colour everywhere
+const CH = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6"];
+const CH_REST = "#D9CDBD";                                  // neutral: "not visited"
+const ACTS = [
+  { key: "onboarding", label: "Onboarding" }, { key: "npd", label: "NPD" }, { key: "evaluations", label: "Staff evaluations" },
+  { key: "storevisit", label: "Store visit reports" }, { key: "coaching", label: "Coaching" }, { key: "development", label: "People dev" }, { key: "workshop", label: "Workshop" },
+].map((a, i) => ({ ...a, color: CH[i] }));
+const chEsc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// one shared tooltip: any element with data-tip shows it on hover / focus / tap
+let chTipEl = null;
+function chTip(root) {
+  if (!chTipEl) { chTipEl = h("div", { class: "ch-tip", role: "tooltip" }); document.body.append(chTipEl); }
+  const show = (e) => { const t = e.target.closest("[data-tip]"); if (!t || !root.contains(t)) return; chTipEl.innerHTML = t.dataset.tip; chTipEl.classList.add("on"); move(e); };
+  const move = (e) => { if (!chTipEl.classList.contains("on")) return; const x = e.clientX ?? e.target.getBoundingClientRect().right, y = e.clientY ?? e.target.getBoundingClientRect().top;
+    const w = chTipEl.offsetWidth; chTipEl.style.transform = `translate(${Math.min(x + 14, innerWidth - w - 8)}px, ${Math.max(8, y - chTipEl.offsetHeight - 10)}px)`; };
+  const hide = (e) => { if (!e.relatedTarget || !e.relatedTarget.closest?.("[data-tip]")) chTipEl.classList.remove("on"); };
+  root.addEventListener("pointerover", show); root.addEventListener("pointermove", move); root.addEventListener("pointerout", hide);
+  root.addEventListener("focusin", show); root.addEventListener("focusout", () => chTipEl.classList.remove("on"));
+  return root;
+}
+const tipHtml = (title, rows) => `<b>${chEsc(title)}</b>${rows.map(([k, v, c]) => `<div class="ch-tip-row">${c ? `<i style="background:${c}"></i>` : ""}<span>${chEsc(k)}</span><b>${chEsc(v)}</b></div>`).join("")}`;
+const legend = (items) => h("div", { class: "ch-legend" }, items.map((a) => h("span", {}, h("i", { style: `background:${a.color}` }), a.label)));
+const chCard = (title, sub, ...body) => h("div", { class: "card ch-card" }, h("h3", { class: "ch-title" }, title), sub && h("p", { class: "muted small ch-sub" }, sub), body);
+const empty = (t) => h("p", { class: "muted small ch-empty" }, t);
+
+// horizontal bars: rows [{label, value, sub?, tip?, color?}], scale = max of values (or fixed 100 for %)
+function hbars(rows, { max, fmt = (v) => v, color = CH[0], pctScale = false } = {}) {
+  if (!rows.length) return empty("Nothing in this period.");
+  const top = pctScale ? 100 : max ?? Math.max(1, ...rows.map((r) => r.value));
+  return chTip(h("div", { class: "ch-hbars" }, rows.map((r) => h("div", { class: "ch-hrow", tabindex: 0, "data-tip": r.tip || tipHtml(r.label, [[pctScale ? "Score" : "Count", fmt(r.value)]]) },
+    h("div", { class: "ch-hlabel" }, h("span", {}, r.label), r.sub && h("small", {}, r.sub)),
+    h("div", { class: "ch-htrack" }, h("i", { style: `width:${Math.max(1.5, (100 * r.value) / top)}%;background:${r.color || color}` })),
+    h("b", { class: "ch-hval" }, fmt(r.value))))));
+}
+
+// stacked horizontal bars: rows [{label, parts:[{value,color,label}], total}]
+function stackbars(rows, parts) {
+  if (!rows.length) return empty("Nothing in this period.");
+  const top = Math.max(1, ...rows.map((r) => r.total));
+  return h("div", {}, legend(parts), chTip(h("div", { class: "ch-hbars" }, rows.map((r) => h("div", { class: "ch-hrow" },
+    h("div", { class: "ch-hlabel" }, h("span", {}, r.label)),
+    h("div", { class: "ch-htrack ch-stack" }, r.parts.filter((p) => p.value > 0).map((p) => h("i", { tabindex: 0, style: `width:${(100 * p.value) / top}%;background:${p.color}`,
+      "data-tip": tipHtml(r.label, [[p.label, p.value, p.color], ["Total", r.total]]) }))),
+    h("b", { class: "ch-hval" }, r.total))))));
+}
+
+// line chart (weekly), y in %, one axis; series [{label,color,key}]
+function linechart(points, series, { fmtX }) {
+  const used = series.filter((s) => points.some((p) => p[s.key] != null));
+  if (points.length < 2 || !used.length) return empty("Not enough weeks yet in this period for a trend. Try a longer period.");
+  const W = 720, H = 240, L = 40, R = 150, T = 14, B = 30;
+  const vals = points.flatMap((p) => used.map((s) => p[s.key]).filter((v) => v != null));
+  let lo = Math.max(0, Math.floor((Math.min(...vals) - 4) / 5) * 5); const hi = 100; if (hi - lo < 10) lo = hi - 10;
+  const x = (i) => L + (i * (W - L - R)) / (points.length - 1), y = (v) => T + ((hi - v) * (H - T - B)) / (hi - lo);
+  const ticks = []; for (let v = lo; v <= hi; v += (hi - lo) / 4) ticks.push(Math.round(v));
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="ch-line" role="img" aria-label="Average scores per week">`;
+  svg += ticks.map((v) => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="ch-grid"/><text x="${L - 8}" y="${y(v) + 4}" class="ch-ax" text-anchor="end">${v}%</text>`).join("");
+  const step = Math.ceil(points.length / 8);
+  svg += points.map((p, i) => (i % step === 0 || i === points.length - 1 ? `<text x="${x(i)}" y="${H - 8}" class="ch-ax" text-anchor="middle">${chEsc(fmtX(p.wk))}</text>` : "")).join("");
+  const ends = [];
+  for (const s of used) {
+    const pts = points.map((p, i) => (p[s.key] == null ? null : [x(i), y(p[s.key])]));
+    let d = "", pen = false; for (const q of pts) { if (!q) { pen = false; continue; } d += `${pen ? "L" : "M"}${q[0].toFixed(1)},${q[1].toFixed(1)}`; pen = true; }
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    svg += pts.map((q) => (q ? `<circle cx="${q[0]}" cy="${q[1]}" r="4" fill="${s.color}" stroke="#FBF7F1" stroke-width="2"/>` : "")).join("");
+    const last = [...pts].reverse().find(Boolean); if (last) ends.push({ y: last[1], s, v: points[pts.lastIndexOf(last)][s.key] });
+  }
+  ends.sort((a, b) => a.y - b.y); for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 14) ends[i].y = ends[i - 1].y + 14;   // keep end labels apart
+  svg += ends.map((e) => `<text x="${W - R + 8}" y="${e.y + 4}" class="ch-end">${chEsc(e.s.short)} ${e.v}%</text>`).join("");
+  // hover columns (bigger than the marks)
+  const colW = (W - L - R) / Math.max(1, points.length - 1);
+  svg += points.map((p, i) => `<rect x="${Math.max(L, x(i) - colW / 2)}" y="${T}" width="${Math.min(W - R, x(i) + colW / 2) - Math.max(L, x(i) - colW / 2)}" height="${H - T - B}" fill="transparent" class="ch-col" tabindex="0" data-tip="${chEsc(tipHtml(`Week of ${fmtX(p.wk)}`, used.map((s) => [s.label, p[s.key] == null ? "—" : `${p[s.key]}% (${p["n_" + s.key]})`, s.color])))}"/>`).join("");
+  svg += "</svg>";
+  const box = h("div", { class: "ch-linebox" }); box.innerHTML = svg;
+  return h("div", {}, legend(used), chTip(box));
+}
+
+// ---------- the dashboard section ----------
+async function dashboardCharts(d, admin) {
+  let c;
+  try { c = await api("/home/charts" + rq()); } catch (e) { return h("div", { class: "card" }, h("p", { class: "err" }, `Charts could not load: ${e.message}`)); }
+  const per = periodText();
+  const fmtX = (wk) => new Date(`${wk}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+  // 1. performance trend
+  const trend = chCard("Overall performance", `Average scores per week, ${per}. Hover a week for the numbers.`,
+    linechart(c.trend, [{ key: "ver", label: "Verification (SBS) score", short: "SBS", color: CH[0] }, { key: "sv", label: "Store visit score", short: "Store visit", color: CH[1] }, { key: "rec", label: "Verification % (onboarding, NPD, coaching, people dev)", short: "Verification %", color: CH[2] }], { fmtX }));
+
+  // 2. outcomes delivered
+  const recN = (m) => d.records.filter((r) => r.module === m).reduce((n, r) => n + r.n, 0);
+  const wsTotal = c.workshop.reduce((n, r) => n + r.n, 0);
+  const outcomes = chCard("Outcomes delivered", `Everything recorded ${per}.`, hbars([
+    { label: "Staff evaluated (SBS)", value: d.verify.evaluations, sub: `${d.verify.visits} visits · ${d.verify.stores} stores` },
+    { label: "Employees onboarded", value: recN("onboarding") }, { label: "NPD verifications", value: recN("npd") },
+    { label: "Store visit reports", value: d.sv.n, sub: `${d.sv.stores} stores` }, { label: "Coaching sessions", value: recN("coaching") },
+    { label: "People development", value: recN("development") }, { label: "Workshop / project entries", value: wsTotal },
+  ].sort((a, b) => b.value - a.value)));
+
+  // 3. trainer contributions per activity
+  let contrib = null;
+  if (admin && d.team) {
+    const ws = new Map(c.workshop.map((r) => [r.tid, r.n]));
+    const rows = d.team.map((t) => {
+      const v = { onboarding: t.onboarding, npd: t.npd, evaluations: t.evaluations, storevisit: t.storevisit, coaching: t.coaching, development: t.development, workshop: ws.get(t.id) || 0 };
+      const parts = ACTS.map((a) => ({ value: v[a.key] || 0, color: a.color, label: a.label }));
+      return { label: t.name, parts, total: parts.reduce((n, p) => n + p.value, 0) };
+    }).filter((r) => r.total > 0).sort((a, b) => b.total - a.total);
+    contrib = chCard("Trainers’ contributions per activity", `What each trainer delivered ${per}. Hover a colour for the number.`, stackbars(rows, ACTS));
+  }
+
+  // 4. areas of development
+  const weak = chCard("Areas of development", "Lowest-performed sections in the latest evaluations, and the coaching topics covered.",
+    h("div", { class: "ch-two" },
+      h("div", {}, h("div", { class: "ch-mini" }, "Weakest sections · tasks performed"),
+        hbars(c.weakest.map((w) => ({ label: w.section, sub: w.position, value: w.pct, tip: tipHtml(w.section, [["Position", w.position], ["Tasks performed", `${w.pct}%`], ["Answers", w.answered]]) })), { pctScale: true, fmt: (v) => `${v}%`, color: CH[1] })),
+      h("div", {}, h("div", { class: "ch-mini" }, "Coaching topics covered · sessions"),
+        hbars(c.topics.map((t) => ({ label: t.topic, value: t.n, tip: tipHtml(t.topic, [["Sessions", t.n], ["Average verification", t.avg == null ? "—" : `${t.avg}%`]]) })), { color: CH[2] }))));
+
+  // 5. store gaps  /  6. highlights
+  const st = c.stores, visited = st.filter((s) => s.visits || s.evals || s.sv_n);
+  // region names differ only in capitals in some store records ("South" / "SOUTH"): group them together for the chart
+  const rname = (s) => { const r = String(s.region || "Other").trim(); return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase(); };
+  const regions = [...new Set(st.map(rname))].map((rg) => {
+    const all = st.filter((s) => rname(s) === rg), v = all.filter((s) => s.visits || s.evals || s.sv_n).length;
+    return { label: rg, total: all.length, parts: [{ value: v, color: CH[0], label: "Visited" }, { value: all.length - v, color: CH_REST, label: "Not visited" }] };
+  }).sort((a, b) => b.total - a.total);
+  const scored = st.filter((s) => s.evals >= 2 && s.ev_pct != null);
+  const storeRow = (s) => ({ label: `${s.code} · ${s.name}`, sub: s.area_manager || "", value: s.ev_pct, tip: tipHtml(`${s.code} · ${s.name}`, [["Staff score", `${s.ev_pct}%`], ["Evaluations", s.evals], ["Store visit score", s.sv_pct == null ? "—" : `${s.sv_pct}%`], ["Area manager", s.area_manager || "—"]]) });
+  const lowest = [...scored].sort((a, b) => a.ev_pct - b.ev_pct).slice(0, 8);
+  const best = [...scored].sort((a, b) => b.ev_pct - a.ev_pct || b.evals - a.evals).slice(0, 8);
+  const svBest = st.filter((s) => s.sv_pct != null).sort((a, b) => b.sv_pct - a.sv_pct).slice(0, 8);
+  const gaps = chCard("Store gaps", `${visited.length} of ${st.length} stores had a trainer ${per}; ${st.length - visited.length} had none.`,
+    h("div", { class: "ch-two" },
+      h("div", {}, h("div", { class: "ch-mini" }, "Coverage by region · stores"), stackbars(regions, [{ color: CH[0], label: "Visited" }, { color: CH_REST, label: "Not visited" }])),
+      h("div", {}, h("div", { class: "ch-mini" }, "Lowest staff scores · stores with 2+ evaluations"), hbars(lowest.map(storeRow), { pctScale: true, fmt: (v) => `${v}%`, color: CH[1] }))));
+  const highs = chCard("Good highlights", "Where training is paying off.",
+    h("div", { class: "ch-two" },
+      h("div", {}, h("div", { class: "ch-mini" }, "Top staff scores · stores with 2+ evaluations"), hbars(best.map(storeRow), { pctScale: true, fmt: (v) => `${v}%`, color: CH[2] })),
+      h("div", {}, h("div", { class: "ch-mini" }, "Top store visit scores"), hbars(svBest.map((s) => ({ label: `${s.code} · ${s.name}`, sub: s.area_manager || "", value: s.sv_pct, tip: tipHtml(`${s.code} · ${s.name}`, [["Store visit score", `${s.sv_pct}%`], ["Reports", s.sv_n]]) })), { pctScale: true, fmt: (v) => `${v}%`, color: CH[2] }))));
+
+  return h("div", { class: "ch-wrap" },
+    h("div", { class: "ch-head" }, h("h2", {}, "Performance at a glance"), h("span", { class: "muted small" }, `Charts follow the period above (${per}).`)),
+    h("div", { class: "ch-grid" }, trend, outcomes), contrib, weak, gaps, highs);
+}

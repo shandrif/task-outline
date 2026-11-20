@@ -450,6 +450,38 @@ async function handle(request, env, ctx) {
     if (r) return r;
   }
 
+  // --- dashboard charts (read-only): weekly trend, per-store scores, weakest areas, coaching topics, workshop per trainer ---
+  if (path === "/api/home/charts" && method === "GET") {
+    const tid = isAdmin ? null : session.trainer.id;
+    const A = [from, to, tid];
+    const wk = (col) => `date(${col}, 'weekday 0', '-6 days')`;            // week starting Monday
+    const [trendEv, trendSv, trendRec, stores, evStore, svStore, visStore, weakest, topics, workshop] = await env.DB.batch([
+      env.DB.prepare(`SELECT ${wk("e.submitted_at")} wk, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx FROM evaluations e WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) GROUP BY wk ORDER BY wk`).bind(...A),
+      env.DB.prepare(`SELECT ${wk("r.created_at")} wk, COUNT(r.overall_score) n, SUM(r.overall_score) sm FROM sv_reports r WHERE r.created_at >= ?1 AND r.created_at < ?2 AND (?3 IS NULL OR r.trainer_id=?3) GROUP BY wk ORDER BY wk`).bind(...A),
+      env.DB.prepare(`SELECT ${wk("r.created_at")} wk, COUNT(r.pct) n, SUM(r.pct) sm FROM records r WHERE r.created_at >= ?1 AND r.created_at < ?2 AND (?3 IS NULL OR r.created_by=?3) GROUP BY wk ORDER BY wk`).bind(...A),
+      env.DB.prepare("SELECT id, username code, name, region, area_manager FROM stores WHERE active=1"),
+      env.DB.prepare(`SELECT e.store_id, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx FROM evaluations e WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) GROUP BY e.store_id`).bind(...A),
+      env.DB.prepare(`SELECT r.store_id, COUNT(r.overall_score) n, SUM(r.overall_score) sm FROM sv_reports r WHERE r.created_at >= ?1 AND r.created_at < ?2 AND (?3 IS NULL OR r.trainer_id=?3) GROUP BY r.store_id`).bind(...A),
+      env.DB.prepare(`SELECT v.store_id, COUNT(*) n FROM visits v WHERE ${RV()} AND (?3 IS NULL OR v.trainer_id=?3) GROUP BY v.store_id`).bind(...A),
+      env.DB.prepare(WEAK_SQL("AND (?3 IS NULL OR e.trainer_id=?3)")).bind(...A),
+      env.DB.prepare(`SELECT json_extract(r.data,'$.topic') topic, COUNT(*) n, ROUND(AVG(r.pct),1) avg FROM records r WHERE r.module='coaching' AND r.created_at >= ?1 AND r.created_at < ?2 AND (?3 IS NULL OR r.created_by=?3) GROUP BY lower(trim(json_extract(r.data,'$.topic'))) ORDER BY n DESC LIMIT 10`).bind(...A),
+      env.DB.prepare(`SELECT w.trainer_id tid, COUNT(*) n FROM workshop_entries w WHERE w.created_at >= ?1 AND w.created_at < ?2 AND (?3 IS NULL OR w.trainer_id=?3) GROUP BY w.trainer_id`).bind(...A),
+    ]);
+    const weeks = new Map();
+    const W = (k) => { if (!weeks.has(k)) weeks.set(k, { wk: k, ver: null, sv: null, rec: null, n_ver: 0, n_sv: 0, n_rec: 0 }); return weeks.get(k); };
+    const r1 = (a, b) => (b ? Math.round((1000 * a) / b) / 10 : null);
+    for (const r of trendEv.results) { const w = W(r.wk); w.ver = r1(r.sc, r.mx); w.n_ver = r.n; }
+    for (const r of trendSv.results) if (r.n) { const w = W(r.wk); w.sv = Math.round((10 * r.sm) / r.n) / 10; w.n_sv = r.n; }
+    for (const r of trendRec.results) if (r.n) { const w = W(r.wk); w.rec = Math.round((10 * r.sm) / r.n) / 10; w.n_rec = r.n; }
+    const ev = new Map(evStore.results.map((r) => [r.store_id, r])), sv = new Map(svStore.results.map((r) => [r.store_id, r])), vi = new Map(visStore.results.map((r) => [r.store_id, r.n]));
+    return json({
+      trend: [...weeks.values()].sort((a, b) => a.wk.localeCompare(b.wk)),
+      stores: stores.results.map((s) => ({ ...s, visits: vi.get(s.id) || 0, evals: ev.get(s.id)?.n || 0, ev_pct: ev.get(s.id) ? r1(ev.get(s.id).sc, ev.get(s.id).mx) : null,
+        sv_n: sv.get(s.id)?.n || 0, sv_pct: sv.get(s.id)?.n ? Math.round((10 * sv.get(s.id).sm) / sv.get(s.id).n) / 10 : null })),
+      weakest: weakest.results, topics: topics.results.filter((t) => t.topic), workshop: workshop.results,
+    });
+  }
+
   // --- workshop / projects (own table; not part of any dashboard) ---
   if (path === "/api/workshop" || path.startsWith("/api/workshop/")) return workshopRoutes({ path, method, url, env, session, isAdmin, body, bad, HttpError, json, str });
 
