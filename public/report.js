@@ -423,3 +423,94 @@ function reportSv(rows, { total = rows.length } = {}) {
       ] }],
   });
 }
+
+// ---------- Main dashboard (every user: admin = everyone, trainer = own entries) ----------
+// Built from the same two calls the Dashboard page uses, so the file always matches the screen.
+async function reportDashboard() {
+  let d, c, modules;
+  try { [d, c, { modules }] = await Promise.all([api("/home/summary" + rq()), api("/home/charts" + rq()), modCfg()]); }
+  catch (e) { toast(e.message); return; }
+  const admin = session.role === "admin", per = periodText();
+  const sum = (rs, f) => rs.reduce((n, r) => n + (r[f] || 0), 0);
+  const recs = (m) => d.records.filter((r) => r.module === m);
+  const avgOf = (rs) => { const s = sum(rs, "scored"); return s ? Math.round((10 * sum(rs, "sum_pct")) / s) / 10 : null; };
+  const verAvg = d.verify.max ? Math.round((1000 * d.verify.score) / d.verify.max) / 10 : null;
+  const svAvg = d.sv.scored ? Math.round((10 * d.sv.sum_score) / d.sv.scored) / 10 : null;
+  const entries = sum(d.records, "n") + d.sv.n + d.verify.evaluations;
+  const wsTotal = c.workshop.reduce((n, r) => n + r.n, 0);
+  const st = c.stores, touched = (s) => s.visits || s.evals || s.sv_n, visited = st.filter(touched);
+  const rname = (s) => { const r = String(s.region || "Other").trim(); return r.charAt(0).toUpperCase() + r.slice(1).toLowerCase(); };
+  const scored = st.filter((s) => s.evals >= 2 && s.ev_pct != null);
+  const storeLabel = (s) => `${s.code} · ${s.name}`;
+
+  // areas: entries + average, one row per area of the app
+  const areas = [
+    ...["onboarding", "npd"].map((m) => [modules[m].title, sum(recs(m), "n"), avgOf(recs(m)), `${sum(recs(m), "scored")} with a score`]),
+    ["Verification (SBS)", d.verify.evaluations, verAvg, `${plural(d.verify.visits, "visit")} · ${plural(d.verify.stores, "store")}`],
+    ["Store visit reports", d.sv.n, svAvg, `${plural(d.sv.stores, "store")} · ${plural(d.sv.follow_ups, "follow-up")} needed`],
+    ...["coaching", "development"].map((m) => [modules[m].title, sum(recs(m), "n"), avgOf(recs(m)), `${sum(recs(m), "scored")} with a score`]),
+    ["Workshop / projects", wsTotal, null, "Entries made"],
+  ];
+  const maxA = Math.max(1, ...areas.map((a) => a[1]));
+  const regions = [...new Set(st.map(rname))].map((rg) => { const all = st.filter((s) => rname(s) === rg), v = all.filter(touched).length; return { rg, total: all.length, v, p: all.length ? Math.round((1000 * v) / all.length) / 10 : null }; }).sort((a, b) => b.total - a.total);
+  const lowest = [...scored].sort((a, b) => a.ev_pct - b.ev_pct).slice(0, 10);
+  const best = [...scored].sort((a, b) => b.ev_pct - a.ev_pct || b.evals - a.evals).slice(0, 10);
+  const svBest = st.filter((s) => s.sv_pct != null).sort((a, b) => b.sv_pct - a.sv_pct).slice(0, 10);
+  const maxT = Math.max(1, ...c.topics.map((t) => t.n));
+  const ws = new Map(c.workshop.map((r) => [r.tid, r.n]));
+  const team = (d.team || []).map((t) => ({ ...t, workshop: ws.get(t.id) || 0 })).map((t) => ({ ...t, total: t.onboarding + t.npd + t.evaluations + t.storevisit + t.coaching + t.development + t.workshop })).sort((a, b) => b.total - a.total);
+  const maxTeam = Math.max(1, ...team.map((t) => t.total));
+  const wk = (s) => new Date(`${s}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+  hmReport({
+    file: xFileName(admin ? "Master_Dashboard" : `My_Dashboard_${session.trainer?.name || ""}`),
+    title: admin ? "Master Dashboard" : "My Dashboard",
+    scope: admin ? "All trainers" : `${session.trainer?.name || ""}${session.trainer?.employee_id ? ` (${session.trainer.employee_id})` : ""}`,
+    period: per,
+    kpis: [
+      { label: "Entries in this period", value: entries, tone: "ink" },
+      { label: "Verification (SBS) average", value: verAvg, pct: true, tone: "teal" },
+      { label: "Store visit average", value: svAvg, pct: true, tone: "tan" },
+      { label: "Avg verification % (other areas)", value: avgOf(d.records), pct: true, tone: "card" },
+      { label: `Stores reached · of ${st.length}`, value: visited.length, tone: "card" },
+    ],
+    sections: [
+      { title: "By area", note: "entries and average score in this period", cols: [["Area", 3, "left"], ["Entries", 1], ["Average", 1], ["Progress", 2, "left"], ["Details", 3, "left"]],
+        rows: areas.map(([name, n, p, line]) => [cName(name), n, cPct(p), p == null ? cVol(n, maxA, 12) : cBar(p), { v: line, align: "left", color: XC.muted, size: 9 }]) },
+      { title: "Areas of development", note: "lowest-performed sections in the latest evaluations", cols: [["Section", 4, "left"], ["Position", 2, "left"], ["Answers", 1], ["Performed", 1], ["Progress", 2, "left"]],
+        rows: c.weakest.map((w) => [cName(w.section), { v: w.position, align: "left" }, w.answered, cPct(w.pct), cBar(w.pct)]), empty: "No evaluations in this period." },
+      { title: "Coaching topics covered", cols: [["Topic", 4, "left"], ["Sessions", 1], ["Average", 1], ["Volume", 4, "left"]],
+        rows: c.topics.map((t) => [cName(t.topic), t.n, cPct(t.avg), cVol(t.n, maxT, 20)]), empty: "No coaching sessions in this period." },
+      { title: "Store coverage by region", note: `${visited.length} of ${st.length} stores had a trainer`, cols: [["Region", 3, "left"], ["Stores", 1], ["Visited", 1], ["Not visited", 1], ["Coverage", 1], ["Progress", 3, "left"]],
+        rows: regions.map((r) => [cName(r.rg), r.total, r.v, r.total - r.v, cPct(r.p), cBar(r.p)]) },
+      { title: "Store gaps · lowest staff scores", note: "stores with 2+ evaluations", cols: [["Store", 4, "left"], ["Area manager", 2, "left"], ["Evaluations", 1], ["Staff score", 1], ["Progress", 2, "left"]],
+        rows: lowest.map((s) => [cName(storeLabel(s)), { v: s.area_manager || "—", align: "left" }, s.evals, cPct(s.ev_pct), cBar(s.ev_pct)]), empty: "Not enough evaluations yet." },
+      { title: "Good highlights · top staff scores", note: "stores with 2+ evaluations", cols: [["Store", 4, "left"], ["Area manager", 2, "left"], ["Evaluations", 1], ["Staff score", 1], ["Progress", 2, "left"]],
+        rows: best.map((s) => [cName(storeLabel(s)), { v: s.area_manager || "—", align: "left" }, s.evals, cPct(s.ev_pct), cBar(s.ev_pct)]), empty: "Not enough evaluations yet." },
+      { title: "Good highlights · top store visit scores", cols: [["Store", 4, "left"], ["Area manager", 2, "left"], ["Reports", 1], ["Score", 1], ["Progress", 2, "left"]],
+        rows: svBest.map((s) => [cName(storeLabel(s)), { v: s.area_manager || "—", align: "left" }, s.sv_n, cPct(s.sv_pct), cBar(s.sv_pct)]), empty: "No store visit scores in this period." },
+      admin && { title: "Trainers’ contributions", note: "everything each trainer entered", cols: [["Trainer", 3, "left"], ["Onb.", 1], ["NPD", 1], ["SBS", 1], ["Store visit", 1], ["Coaching", 1], ["Total", 1], ["Volume", 1, "left"]],
+        rows: team.map((t) => [cName(t.name), t.onboarding, t.npd, t.evaluations, t.storevisit, t.coaching, { v: t.total, bold: true }, cVol(t.total, maxTeam, 6)]), empty: "Nothing entered yet." },
+    ],
+    tip: "Full numbers are on the next sheets: weekly trend, every store, " + (admin ? "every trainer, " : "") + "and the latest activity. Use the filter arrows to sort or filter.",
+    sheets: [
+      { name: "Weekly trend", title: "Overall performance by week", rows: c.trend, tab: XC.ink, summary: plural(c.trend.length, "week"),
+        cols: [{ label: "Week starting", get: (r) => wk(r.wk), width: 16 }, { label: "SBS evaluations", get: (r) => r.n_ver || 0, type: "int", width: 14 }, { label: "SBS score", get: (r) => r.ver, type: "pct" },
+          { label: "Store visit reports", get: (r) => r.n_sv || 0, type: "int", width: 14 }, { label: "Store visit score", get: (r) => r.sv, type: "pct", width: 14 },
+          { label: "Scored records", get: (r) => r.n_rec || 0, type: "int", width: 14 }, { label: "Verification %", get: (r) => r.rec, type: "pct", width: 14 }] },
+      { name: "Stores", title: admin ? "Every store" : "Every store · your entries", rows: [...st].sort((a, b) => (touched(b) ? 1 : 0) - (touched(a) ? 1 : 0) || String(a.code).localeCompare(String(b.code), undefined, { numeric: true })),
+        summary: `${visited.length} of ${st.length} stores reached`,
+        cols: [{ label: "Code", get: (s) => s.code, width: 10 }, { label: "Store", get: (s) => s.name, width: 30, bold: true }, { label: "Region", get: (s) => rname(s), width: 12 }, { label: "Area manager", get: (s) => s.area_manager, width: 24 },
+          { label: "Reached", get: (s) => (touched(s) ? "Yes" : "No"), type: "yesno" }, { label: "Visits", get: (s) => s.visits, type: "int" }, { label: "Staff evaluations", get: (s) => s.evals, type: "int", width: 12 },
+          { label: "Staff score", get: (s) => s.ev_pct, type: "pct" }, { label: "Store visit reports", get: (s) => s.sv_n, type: "int", width: 12 }, { label: "Store visit score", get: (s) => s.sv_pct, type: "pct", width: 12 }] },
+      admin && { name: "Trainers", title: "Trainers’ contributions", rows: team, summary: `${team.length} trainers with entries`,
+        cols: [{ label: "Trainer", get: (t) => t.name, width: 26, bold: true }, { label: "Employee ID", get: (t) => t.employee_id, width: 12 }, { label: "Designation", get: (t) => t.designation, width: 20 },
+          { label: "Onboarding", get: (t) => t.onboarding, type: "int" }, { label: "NPD", get: (t) => t.npd, type: "int" }, { label: "Staff evaluated (SBS)", get: (t) => t.evaluations, type: "int", width: 13 },
+          { label: "Verification visits", get: (t) => t.visits, type: "int", width: 12 }, { label: "Store visit reports", get: (t) => t.storevisit, type: "int", width: 12 }, { label: "Coaching", get: (t) => t.coaching, type: "int" },
+          { label: "People dev.", get: (t) => t.development, type: "int" }, { label: "Workshop", get: (t) => t.workshop, type: "int" }, { label: "Total", get: (t) => t.total, type: "int", bold: true }] },
+      { name: "Latest activity", title: "Latest activity", rows: d.recent, summary: "most recent entries",
+        cols: [{ label: "When", get: (r) => r.created_at, type: "datetime" }, { label: "Area", get: (r) => (r.module === "storevisit" ? "Store visit" : (MODULE_ORDER.find((m) => m[0] === r.module) || [0, r.module])[1]), width: 18 },
+          { label: "Name", get: (r) => r.name, width: 30, bold: true }, { label: "Score", get: (r) => r.pct, type: "pct" }, { label: "By", get: (r) => r.by_name, width: 22 }] },
+    ].filter(Boolean),
+  });
+}
