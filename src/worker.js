@@ -315,10 +315,12 @@ const PAGE = 500;
 const beforeId = (url) => { const n = Math.floor(Number(url.searchParams.get("before"))); return n > 0 ? n : Number.MAX_SAFE_INTEGER; };
 
 // Weakest areas / notes look at the latest 2,000 submitted evaluations in the period (date-indexed), so their cost stays small however much data builds up.
-const WEAK_SQL = (extra = "") => `SELECT p.name position, s.title section, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
-    FROM (SELECT e.id FROM evaluations e WHERE ${RE()} ${extra} ORDER BY e.submitted_at DESC LIMIT 2000) r
-    JOIN eval_sections es ON es.evaluation_id=r.id JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
-    GROUP BY s.id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8`;
+// (answers are summed per section first, then the 8 results get their names: looking names up for every answer doubled the reads)
+const WEAK_SQL = (extra = "") => `SELECT p.name position, s.title section, x.answered, x.pct
+    FROM (SELECT es.section_id, SUM(es.max) answered, ROUND(100.0*SUM(es.score)/SUM(es.max),1) pct
+          FROM (SELECT e.id FROM evaluations e WHERE ${RE()} ${extra} ORDER BY e.submitted_at DESC LIMIT 2000) r
+          JOIN eval_sections es ON es.evaluation_id=r.id GROUP BY es.section_id HAVING SUM(es.max)>=5 ORDER BY pct ASC LIMIT 8) x
+    JOIN sections s ON s.id=x.section_id JOIN positions p ON p.id=s.position_id ORDER BY x.pct ASC`;
 
 const NOTES_SQL = (extra = "") => `SELECT e.id,e.staff_name,e.improvement_notes,e.submitted_at,p.name position,t.name trainer_name,st.name store_name,st.username store_code
     FROM evaluations e JOIN positions p ON p.id=e.position_id JOIN stores st ON st.id=e.store_id LEFT JOIN trainers t ON t.id=e.trainer_id
@@ -459,22 +461,30 @@ async function handle(request, env, ctx) {
   if (path === "/api/verify/topics" && method === "GET") {
     const tid = isAdmin ? (Math.floor(Number(url.searchParams.get("trainer"))) || null) : session.trainer.id;
     const A = [from, to, tid];
-    const base = `FROM eval_sections es JOIN evaluations e ON e.id=es.evaluation_id JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
-                  WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3)`;
-    const [topics, matrix, trainers, catalog] = await env.DB.batch([
-      env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, COUNT(*) staff, COUNT(DISTINCT e.trainer_id) trainers, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY s.id`).bind(...A),
-      env.DB.prepare(`SELECT e.trainer_id, s.id section_id, COUNT(*) n, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY e.trainer_id, s.id`).bind(...A),
-      env.DB.prepare(`SELECT DISTINCT t.id, t.name FROM evaluations e JOIN trainers t ON t.id=e.trainer_id WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) ORDER BY t.name COLLATE NOCASE`).bind(...A),
+    // One pass over the answers, grouped by trainer and topic; the per-topic totals and the trainer list are added up from it
+    // (three separate passes, each looking up names for every answer, used ~15k reads per call; this uses ~9k)
+    const [cells, catalog] = await env.DB.batch([
+      env.DB.prepare(`SELECT x.trainer_id, t.name trainer_name, x.section_id, s.title, p.id position_id, p.name position, x.n, x.sc, x.mx
+        FROM (SELECT e.trainer_id, es.section_id, COUNT(*) n, SUM(es.score) sc, SUM(es.max) mx FROM evaluations e JOIN eval_sections es ON es.evaluation_id=e.id
+              WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) GROUP BY e.trainer_id, es.section_id) x
+        JOIN sections s ON s.id=x.section_id JOIN positions p ON p.id=s.position_id LEFT JOIN trainers t ON t.id=x.trainer_id`).bind(...A),
       // every active topic of the positions this trainer (or anyone) evaluated in the period: lets the page show topics not verified yet
       env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, s.sort FROM sections s JOIN positions p ON p.id=s.position_id
                       WHERE s.active=1 AND p.active=1 AND p.id IN (SELECT DISTINCT e.position_id FROM evaluations e WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3))
                       AND EXISTS (SELECT 1 FROM items i WHERE i.section_id=s.id AND i.active=1 AND i.kind='question') ORDER BY p.sort, s.sort`).bind(...A),
     ]);
     const r1 = (a, b) => (b ? Math.round((1000 * a) / b) / 10 : null);
+    const bySec = new Map(), names = new Map();
+    for (const c of cells.results) {
+      if (c.trainer_id != null) names.set(c.trainer_id, c.trainer_name);
+      const t = bySec.get(c.section_id) || { section_id: c.section_id, title: c.title, position_id: c.position_id, position: c.position, staff: 0, trainers: 0, sc: 0, mx: 0 };
+      t.staff += c.n; t.trainers += 1; t.sc += c.sc || 0; t.mx += c.mx || 0; bySec.set(c.section_id, t);
+    }
     return json({
-      topics: topics.results.map((t) => ({ ...t, pct: r1(t.sc, t.mx) })),
-      matrix: matrix.results.map((m) => ({ ...m, pct: r1(m.sc, m.mx) })),
-      trainers: trainers.results, catalog: catalog.results,
+      topics: [...bySec.values()].map((t) => ({ ...t, pct: r1(t.sc, t.mx) })),
+      matrix: cells.results.map((m) => ({ trainer_id: m.trainer_id, section_id: m.section_id, n: m.n, sc: m.sc, mx: m.mx, pct: r1(m.sc, m.mx) })),
+      trainers: [...names].map(([id, name]) => ({ id, name })).sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" })),
+      catalog: catalog.results,
     });
   }
 
@@ -905,13 +915,29 @@ async function handle(request, env, ctx) {
   throw new HttpError(404, "Not found");
 }
 
+// The heaviest dashboard reads are reused for 60 seconds for the same person and the same period (D1 free plan: 5M rows read a day).
+// Any change (POST/PATCH/PUT/DELETE) handled here clears them, so people see their own changes straight away.
+const MEMO = new Map(), MEMO_MS = 60000;
+const MEMO_PATHS = new Set(["/api/verify/topics", "/api/home/charts", "/api/home/summary", "/api/admin/summary", "/api/admin/coverage"]);
+
 export default {
   async fetch(request, env, ctx) {
-    const { pathname } = new URL(request.url);
+    const { pathname, search } = new URL(request.url);
     if (!pathname.startsWith("/api/")) return env.ASSETS.fetch(request);
+    if (request.method !== "GET") MEMO.clear();
+    const memoKey = request.method === "GET" && MEMO_PATHS.has(pathname) ? `${pathname}${search}|${request.headers.get("cookie") || ""}` : null;
+    if (memoKey) {
+      const hit = MEMO.get(memoKey);
+      if (hit && Date.now() - hit.at < MEMO_MS) return new Response(hit.body, { headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
+    }
     try {
       if (!env.SESSION_SECRET) throw new HttpError(500, "SESSION_SECRET is not configured");
-      return await handle(request, env, ctx);
+      const res = await handle(request, env, ctx);
+      if (memoKey && res.status === 200) {
+        if (MEMO.size > 300) MEMO.clear();
+        MEMO.set(memoKey, { at: Date.now(), body: await res.clone().text() });
+      }
+      return res;
     } catch (e) {
       if (e instanceof HttpError) return json({ error: e.message }, e.status);
       console.error(e);
