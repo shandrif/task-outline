@@ -329,7 +329,7 @@ const NOTES_SQL = (extra = "") => `SELECT e.id,e.staff_name,e.improvement_notes,
 async function aggregate(env, from, to, trainerId = null) {
   const A = [from, to, trainerId];
   const who = "AND (?3 IS NULL OR e.trainer_id=?3)";
-  const [trainers, stores, positions, visitAgg, evalAgg, posAgg, weakest, notes, misc, staffAgg, topicAgg] = await env.DB.batch([
+  const [trainers, stores, positions, visitAgg, evalAgg, posAgg, weakest, notes, misc] = await env.DB.batch([
     env.DB.prepare("SELECT id,employee_id,name,designation,status,created_at,approved_at,last_login,last_visit_at FROM trainers WHERE (?1 IS NULL OR id=?1)").bind(trainerId),
     env.DB.prepare("SELECT id,name,username,area_manager,rom,region,city,active,last_visit_at FROM stores WHERE active=1 ORDER BY username COLLATE NOCASE LIMIT 400"),
     env.DB.prepare("SELECT id,name FROM positions WHERE active=1 ORDER BY sort,id"),
@@ -347,10 +347,6 @@ async function aggregate(env, from, to, trainerId = null) {
     env.DB.prepare(WEAK_SQL(who)).bind(...A),
     env.DB.prepare(NOTES_SQL(who)).bind(...A),
     env.DB.prepare("SELECT (SELECT COUNT(*) FROM trainers WHERE status='pending') pending, (SELECT COUNT(*) FROM trainers WHERE status='approved') approved, (SELECT COUNT(*) FROM evaluations WHERE status='draft') drafts"),
-    // different people evaluated (a person = name at a store), counted once however many times they were evaluated
-    env.DB.prepare(`SELECT COUNT(DISTINCT e.store_id || '|' || lower(trim(e.staff_name))) staff FROM evaluations e WHERE ${RE()} ${who}`).bind(...A),
-    // topic verifications (one topic verified for one staff member), per position of the topic: the total of "Verification by topic"
-    env.DB.prepare(`SELECT s.position_id, COUNT(*) n, COUNT(DISTINCT es.section_id) topics FROM eval_sections es JOIN evaluations e ON e.id=es.evaluation_id JOIN sections s ON s.id=es.section_id WHERE ${RE()} ${who} GROUP BY s.position_id`).bind(...A),
   ]);
 
   const T = new Map(trainers.results.map((t) => [t.id, { ...t, last_visit: t.last_visit_at, visits: 0, stores: new Set(), evaluations: 0, staff_evaluated: 0, sum_score: 0, sum_max: 0, sum_trained: 0 }]));
@@ -373,9 +369,7 @@ async function aggregate(env, from, to, trainerId = null) {
   return {
     totals: {
       stores: byStore.length, trainers: misc.results[0].approved, pending: misc.results[0].pending, drafts: misc.results[0].drafts,
-      visits: tot.visits, stores_visited: byStore.filter((x) => x.visits > 0).length, evaluations: tot.evaluations, staff_evaluated: staffAgg.results[0]?.staff || 0,
-      topic_verifications: topicAgg.results.reduce((n, r) => n + r.n, 0), topics: topicAgg.results.reduce((n, r) => n + r.topics, 0),
-      topics_by_position: topicAgg.results.map((r) => ({ position_id: r.position_id, n: r.n, topics: r.topics })),
+      visits: tot.visits, stores_visited: byStore.filter((x) => x.visits > 0).length, evaluations: tot.evaluations,
       avg_pct: r1(tot.sc, tot.mx), trained_pct: r1(tot.tr, tot.mx), score: tot.sc, max: tot.mx, trained: tot.tr,
     },
     byTrainer: [...T.values()].map(({ stores: set, last_visit_at, ...t }) => ({ ...t, stores_visited: set.size })),
