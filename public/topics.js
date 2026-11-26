@@ -26,13 +26,13 @@ function verifyTopicsSection() {
       h("div", { style: "margin:12px 0" }, tabs), body);
 
     const trainersFor = (t) => {
-      const rows = d.matrix.filter((m) => m.section_id === t.section_id).map((m) => ({ name: names.get(m.trainer_id) || "—", n: m.n, pct: m.pct })).sort((a, b) => b.n - a.n);
+      const rows = d.matrix.filter((m) => m.section_id === t.section_id).map((m) => ({ name: names.get(m.trainer_id) || "—", n: m.n, evals: m.evals, pct: m.pct })).sort((a, b) => b.n - a.n);
       const max = Math.max(1, ...rows.map((r) => r.n));
       return modal(t.title, h("div", { class: "stack" },
-        h("div", { class: "ex-head" }, `${t.staff} staff verified · ${t.trainers} trainer${t.trainers === 1 ? "" : "s"} · ${t.pct}% performed`),
+        h("div", { class: "ex-head" }, `${t.staff} staff verified (${t.evals} evaluation${t.evals === 1 ? "" : "s"}) · ${t.trainers} trainer${t.trainers === 1 ? "" : "s"} · ${t.pct}% performed`),
         h("p", { class: "small muted", style: "margin:0" }, `${t.position} · ${per}`),
         h("div", { class: "tp-list" }, rows.map((r) => h("div", { class: "tp-row" }, h("b", {}, r.name),
-          h("div", { class: "tp-track" }, h("i", { style: `width:${(100 * r.n) / max}%` })), h("span", { class: "tp-n" }, `${r.n} staff`), tpPct(r.pct))))),
+          h("div", { class: "tp-track" }, h("i", { style: `width:${(100 * r.n) / max}%` })), h("span", { class: "tp-n", title: `${r.evals} evaluation${r.evals === 1 ? "" : "s"}` }, `${r.n} staff`), tpPct(r.pct))))),
         (close) => [h("button", { class: "btn teal", onclick: () => close(true) }, "Close")]);
     };
 
@@ -45,7 +45,7 @@ function verifyTopicsSection() {
         body.replaceChildren(h("div", { class: "tp-head" }, h("span", {}, "Topic"), h("span", {}, "Staff verified"), h("span", { class: "tp-tr" }, "Trainers"), h("span", {}, "Performed")),
           h("div", { class: "tp-list" }, topics.map((t) => {
             const row = h("div", { class: "tp-row click", role: "button", tabindex: 0, title: "Click to see which trainers verified this topic" },
-              h("b", {}, t.title), h("div", { class: "tp-track" }, h("i", { style: `width:${(100 * t.staff) / max}%` }), h("span", { class: "tp-n" }, t.staff)), h("span", { class: "tp-n tp-tr" }, t.trainers), tpPct(t.pct));
+              h("b", {}, t.title), h("div", { class: "tp-track" }, h("i", { style: `width:${(100 * t.staff) / max}%` }), h("span", { class: "tp-n", title: `${t.staff} different people · ${t.evals} evaluation${t.evals === 1 ? "" : "s"}` }, t.staff)), h("span", { class: "tp-n tp-tr" }, t.trainers), tpPct(t.pct));
             row.addEventListener("click", () => trainersFor(t)); row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); trainersFor(t); } });
             return row;
           })));
@@ -58,9 +58,9 @@ function verifyTopicsSection() {
           h("tbody", {}, tr.map((x) => h("tr", {}, h("th", { scope: "row" }, x.name), topics.map((t) => {
             const m = cell.get(`${x.id}|${t.section_id}`);
             if (!m) return h("td", { class: "tp-gap", "data-tip": tipHtml(`${x.name} · ${t.title}`, [["Staff verified", "none"]]) }, "–");
-            return h("td", { style: `--a:${(0.12 + 0.88 * (m.n / max)).toFixed(2)}`, "data-tip": tipHtml(`${x.name} · ${t.title}`, [["Staff verified", m.n], ["Performed", `${m.pct}%`]]) }, m.n);
+            return h("td", { style: `--a:${(0.12 + 0.88 * (m.n / max)).toFixed(2)}`, "data-tip": tipHtml(`${x.name} · ${t.title}`, [["Staff verified", m.n], ["Evaluations", m.evals], ["Performed", `${m.pct}%`]]) }, m.n);
           })))));
-        body.replaceChildren(h("p", { class: "small muted", style: "margin:0 0 8px" }, "Each cell is the number of staff a trainer verified on that topic. Empty cells (–) are topics the trainer did not cover. Hover a cell for the score."),
+        body.replaceChildren(h("p", { class: "small muted", style: "margin:0 0 8px" }, "Each cell is the number of different staff a trainer verified on that topic (a person evaluated twice counts once). Empty cells (–) are topics the trainer did not cover. Hover a cell for the score."),
           chTip(h("div", { class: "tp-gridwrap" }, table)));
       }
     };

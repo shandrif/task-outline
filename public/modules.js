@@ -227,7 +227,7 @@ async function homeView() {
       rows: d.team.map((t) => ({ ...t, total: t.onboarding + t.npd + t.coaching + t.development + t.storevisit + t.visits })), sort: { key: "total", dir: -1 }, empty: "Nothing entered yet.",
       searchIn: (t) => `${t.name} ${t.employee_id} ${t.designation}`,
       cols: [{ key: "name", label: "Trainer", render: (t) => h("span", {}, h("b", {}, t.name), t.employee_id && h("div", { class: "small muted" }, `${t.employee_id} · ${t.designation}`)) },
-        { key: "onboarding", label: "Onboarding", num: true }, { key: "npd", label: "NPD", num: true }, { key: "evaluations", label: "Staff evaluated", num: true }, { key: "visits", label: "Verification visits", num: true },
+        { key: "onboarding", label: "Onboarding", num: true }, { key: "npd", label: "NPD", num: true }, { key: "evaluations", label: "SBS evaluations", num: true }, { key: "visits", label: "Verification visits", num: true },
         { key: "storevisit", label: "Store visit reports", num: true }, { key: "coaching", label: "Coaching", num: true }, { key: "development", label: "People dev.", num: true }, { key: "total", label: "Total", num: true, render: (t) => h("b", {}, t.total) }],
     });
   }

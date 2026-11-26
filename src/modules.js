@@ -197,7 +197,7 @@ export async function moduleRoutes(c) {
       env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id) stores, COUNT(overall_score) scored, COALESCE(SUM(overall_score),0) sum_score, COALESCE(SUM(follow_up),0) follow_ups
         FROM sv_reports WHERE created_at >= ?1 AND created_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
       env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id) stores FROM visits WHERE started_at >= ?1 AND started_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
-      env.DB.prepare(`SELECT COUNT(*) n, COALESCE(SUM(score),0) sc, COALESCE(SUM(max_score),0) mx FROM evaluations
+      env.DB.prepare(`SELECT COUNT(*) n, COUNT(DISTINCT store_id || '|' || lower(trim(staff_name))) people, COALESCE(SUM(score),0) sc, COALESCE(SUM(max_score),0) mx FROM evaluations
         WHERE status='submitted' AND submitted_at >= ?1 AND submitted_at < ?2 AND (?3 IS NULL OR trainer_id=?3)`).bind(from, to, o),
       env.DB.prepare(`SELECT * FROM (
           SELECT 'rec' src, id, module, kind, name, pct, created_by_name by_name, created_at FROM records WHERE (?1 IS NULL OR created_by=?1) ORDER BY id DESC LIMIT 12)
@@ -218,7 +218,7 @@ export async function moduleRoutes(c) {
       add(byRec); add(bySv, "storevisit"); add(byVis, "visits"); add(byEv, "evaluations");
       team = [...rows.values()].filter((t) => t.onboarding + t.npd + t.coaching + t.development + t.storevisit + t.visits + t.evaluations > 0);
     }
-    return json({ records: recs.results, sv: svs.results[0], verify: { visits: vis.results[0].n, stores: vis.results[0].stores, evaluations: evs.results[0].n, score: evs.results[0].sc, max: evs.results[0].mx }, recent: recent.results, team, pending: isAdmin ? trainers.results.filter((x) => x.status === "pending").length : 0 });
+    return json({ records: recs.results, sv: svs.results[0], verify: { visits: vis.results[0].n, stores: vis.results[0].stores, evaluations: evs.results[0].n, people: evs.results[0].people, score: evs.results[0].sc, max: evs.results[0].mx }, recent: recent.results, team, pending: isAdmin ? trainers.results.filter((x) => x.status === "pending").length : 0 });
   }
 
   // ---------- store visit reports ----------

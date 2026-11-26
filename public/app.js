@@ -345,7 +345,7 @@ async function trainerHome() {
     return [
       tile("tealk", my.visits, "Visits made · last 30 days", { title: "Your visits", headline: `${my.visits} visit${my.visits === 1 ? "" : "s"} in the last 30 days`,
         text: ["Every time you start a visit at a store it counts as one visit. If you go back to the same store, that is another visit — so this can be higher than the number of different stores."],
-        sections: [{ title: "Your visits", head: ["Date", "Store", "Staff evaluated"], rows: recent.map((v) => [fmtDateTime(v.started_at), `${v.store_code} · ${v.store_name}`, v.evals]) }] }),
+        sections: [{ title: "Your visits", head: ["Date", "Store", "Staff evaluated"], rows: recent.map((v) => [fmtDateTime(v.started_at), `${v.store_code} · ${v.store_name}`, v.staff]) }] }),
       tile("", my.staff ?? 0, `Staff evaluated · ${evals} evaluation${evals === 1 ? "" : "s"}`, { title: "Staff evaluated", headline: `${my.staff ?? 0} different ${my.staff === 1 ? "person" : "people"} in the last 30 days`,
         text: ["Each person is counted once, however many times you evaluated them (a person = the same name at the same store).", evals > (my.staff ?? 0) ? `${evals} evaluations − ${my.staff} people = ${evals - my.staff} repeat evaluation${evals - my.staff === 1 ? "" : "s"} (the same person evaluated again).` : "You did not evaluate anyone twice.", `You visited ${stores} different store${stores === 1 ? "" : "s"}.`],
         sections: [{ title: "Stores you visited", head: ["Store", "Visits"], rows: [...byStore].sort((a, b) => b[1] - a[1]) }] }),
@@ -364,7 +364,7 @@ async function trainerHome() {
     sort: { key: "started_at", dir: -1 }, onRow: (v) => (location.hash = `#/visit/${v.id}`), empty: "No visits yet. Start your first one with “Start store visit”.",
     toolbar: visits.length >= 60 ? [h("button", { class: "btn ghost sm", onclick: async (e) => { e.target.disabled = true; const all = await apiPages("/visits?all=1"); g.setRows(all.map((v) => ({ ...v, store: `${v.store_code} · ${v.store_name}`, avg: v.sum_max ? pct(v.sum_score, v.sum_max) : null }))); e.target.remove(); } }, "Show older visits")] : [],
     cols: [{ key: "started_at", label: "Date", render: (v) => fmtDateTime(v.started_at) }, { key: "store", label: "Store", render: (v) => h("span", {}, h("b", {}, v.store_code), " ", v.store_name) },
-      { key: "city", label: "City" }, { key: "evals", label: "Staff evaluated", num: true }, { key: "avg", label: "Average", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip }],
+      { key: "city", label: "City" }, { key: "staff", label: "Staff evaluated", num: true }, { key: "avg", label: "Average", num: true, render: (v) => avgCell(v.avg) }, { key: "status", label: "Status", render: statusChip }],
   });
   return shell(h("div", {},
     pageHead(`Hello, ${session.trainer.name.split(" ")[0]}`, "Visit a store, evaluate the team, and note what needs more training.", h("a", { class: "btn teal", href: "#/visit/new" }, "+ Start store visit")),
@@ -840,7 +840,7 @@ async function adminHome() {
     pageHead("Dashboard", "Trainer visits to stores, staff evaluated, and where more training is needed.", rangeBar()),
     t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, adminTiles()),
-    staffByPosition(d.byPosition),
+    staffByPosition(d.byPosition, t.staff_evaluated),
     verifyTopicsSection(),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
@@ -854,7 +854,7 @@ async function adminHome() {
 }
 
 // "Staff verified by position": how many people of each role were evaluated, and how well trained they are
-function staffByPosition(list) {
+function staffByPosition(list, people = null) {
   const per = periodText();
   const total = list.reduce((n, p) => n + p.staff, 0);
   const card = (p) => {
@@ -880,7 +880,7 @@ function staffByPosition(list) {
   };
   const shown = [...list].sort((a, b) => b.staff - a.staff || b.evaluations - a.evaluations);
   return h("div", { class: "card" },
-    h("div", { class: "row spread" }, h("h2", {}, "Staff verified by position"), h("span", { class: "chip" }, `${total} staff in total`)),
+    h("div", { class: "row spread" }, h("h2", {}, "Staff verified by position"), h("span", { class: "chip", title: people != null && people < total ? `The positions add up to ${total}: someone verified for two positions is counted under each.` : "" }, `${people ?? total} staff in total`)),
     h("p", { class: "muted small" }, `How many people of each role were evaluated in ${per}, and how well trained they are. Click a position for details.`),
     h("div", { class: "poscards" }, shown.map(card)));
 }

@@ -245,7 +245,7 @@ const xScopeText = (filtered, total, what) => (filtered < total ? `${filtered} o
 function reportVisits(rows, { title = "Store Visits Report", scope, total = rows.length, file = "Visits", showTrainer = true } = {}) {
   const scored = rows.filter((v) => v.avg != null);
   const fu = rows.filter((v) => v.follow_up);
-  const staff = rows.reduce((n, v) => n + (+v.staff || 0), 0);
+  const evals = rows.reduce((n, v) => n + (+v.evals || 0), 0);
   const avg = xAvg(scored, (v) => v.avg);
   const multiT = xMany(rows, (v) => v.trainer_name);
   return hmReport({
@@ -253,13 +253,13 @@ function reportVisits(rows, { title = "Store Visits Report", scope, total = rows
     kpis: [
       { label: "Visits", value: rows.length, tone: "ink" },
       { label: "Stores visited", value: new Set(rows.map((v) => v.store_code)).size, tone: "tan" },
-      { label: "Staff evaluated", value: staff, tone: "teal" },
+      { label: "Evaluations", value: evals, tone: "teal" },
       { label: "Average score", value: avg, pct: true, tone: avg == null ? "card" : avg >= GOOD ? "good" : avg >= WARN ? "card" : "bad" },
       { label: "Follow-ups required", value: fu.length, tone: fu.length ? "tan" : "card" },
     ],
     sections: [
       multiT && xRollup("By trainer", "visits and average staff score", rows, (v) => v.trainer_name, { label: "Trainer", count: "Visits", pctFn: (v) => v.avg, pctLabel: "Avg score",
-        extra: [{ label: "Stores", get: (l) => new Set(l.map((v) => v.store_code)).size }, { label: "Staff", get: (l) => l.reduce((n, v) => n + (+v.staff || 0), 0) }] }),
+        extra: [{ label: "Stores", get: (l) => new Set(l.map((v) => v.store_code)).size }, { label: "Evaluations", get: (l) => l.reduce((n, v) => n + (+v.evals || 0), 0) }] }),
       xRollup("By area manager", "where the visits went and how stores scored", rows, (v) => v.area_manager, { label: "Area manager", count: "Visits", pctFn: (v) => v.avg, pctLabel: "Avg score" }),
       xMany(rows, (v) => v.region) && xRollup("By region", null, rows, (v) => v.region, { label: "Region", count: "Visits", pctFn: (v) => v.avg, pctLabel: "Avg score" }),
       { title: "Lowest-scoring visits", note: "the 10 visits with the lowest average staff score", cols: [["Date", 1], ["Store", 3, "left"], ["Trainer", 2, "left"], ["Staff", 1], ["Avg score", 1], ["Follow-up", 2]],
@@ -546,7 +546,7 @@ async function reportDashboard() {
           { label: "Staff score", get: (s) => s.ev_pct, type: "pct" }, { label: "Store visit reports", get: (s) => s.sv_n, type: "int", width: 12 }, { label: "Store visit score", get: (s) => s.sv_pct, type: "pct", width: 12 }] },
       admin && { name: "Trainers", title: "Trainers’ contributions", rows: team, summary: `${team.length} trainers with entries`,
         cols: [{ label: "Trainer", get: (t) => t.name, width: 26, bold: true }, { label: "Employee ID", get: (t) => t.employee_id, width: 12 }, { label: "Designation", get: (t) => t.designation, width: 20 },
-          { label: "Onboarding", get: (t) => t.onboarding, type: "int" }, { label: "NPD", get: (t) => t.npd, type: "int" }, { label: "Staff evaluated (SBS)", get: (t) => t.evaluations, type: "int", width: 13 },
+          { label: "Onboarding", get: (t) => t.onboarding, type: "int" }, { label: "NPD", get: (t) => t.npd, type: "int" }, { label: "SBS evaluations", get: (t) => t.evaluations, type: "int", width: 13 },
           { label: "Verification visits", get: (t) => t.visits, type: "int", width: 12 }, { label: "Store visit reports", get: (t) => t.storevisit, type: "int", width: 12 }, { label: "Coaching", get: (t) => t.coaching, type: "int" },
           { label: "People dev.", get: (t) => t.development, type: "int" }, { label: "Workshop", get: (t) => t.workshop, type: "int" }, { label: "Total", get: (t) => t.total, type: "int", bold: true }] },
       { name: "Latest activity", title: "Latest activity", rows: d.recent, summary: "most recent entries",
