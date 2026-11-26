@@ -134,6 +134,13 @@ export async function lmsRoutes({ path, method, url, env, session, isAdmin, body
       if (sets.length) await env.DB.prepare(`UPDATE lms_quizzes SET ${sets.join(",")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(...vals, id).run();
       return json({ ok: true });
     }
+    // delete: only a quiz that was never run; one with results is turned off instead, so no staff results are lost
+    if (method === "DELETE") {
+      const used = await env.DB.prepare("SELECT COUNT(*) n, (SELECT COUNT(*) FROM lms_attempts a JOIN lms_sessions s ON s.id=a.session_id WHERE s.quiz_id=?1) answers FROM lms_sessions WHERE quiz_id=?1").bind(id).first();
+      if (used.n) throw new HttpError(409, `This quiz has been run ${used.n} time${used.n === 1 ? "" : "s"} (${used.answers} staff answer${used.answers === 1 ? "" : "s"}), so it can't be deleted without losing those results. Turn it off instead — trainers stop seeing it and the results stay.`);
+      await env.DB.batch([env.DB.prepare("DELETE FROM lms_questions WHERE quiz_id=?").bind(id), env.DB.prepare("DELETE FROM lms_quizzes WHERE id=?").bind(id)]);
+      return json({ ok: true });
+    }
   }
   if ((m = path.match(/^\/api\/admin\/lms\/quizzes\/(\d+)\/questions$/)) && method === "POST") {
     needAdmin();

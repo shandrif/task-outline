@@ -148,7 +148,10 @@ async function lmsQuizList(seg) {
     h("div", { class: "card" }, h("h2", {}, "Quizzes"),
       quizzes.length ? h("div", { class: "table-wrap" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Quiz", "Position", "Questions", "Pass mark", "Sessions", "Answers", ""].map((x) => h("th", {}, x)))),
         h("tbody", {}, quizzes.map((q) => h("tr", { class: "click" + (q.active ? "" : " off"), onclick: () => (location.hash = `#/admin/lms/q/${q.id}`) }, h("td", {}, h("b", {}, q.title), !q.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Off")), h("td", {}, q.position || "Any"),
-          h("td", {}, q.questions), h("td", {}, `${q.pass_mark}%`), h("td", {}, q.sessions), h("td", {}, q.attempts), h("td", {}, h("span", { class: "btn ghost sm" }, "Edit")))))))
+          h("td", {}, q.questions), h("td", {}, `${q.pass_mark}%`), h("td", {}, q.sessions), h("td", {}, q.attempts), h("td", {}, h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" }, h("span", { class: "btn ghost sm" }, "Edit"),
+            h("button", { class: "icon del", title: q.sessions ? "Already run — turn it off instead" : "Delete quiz", "aria-label": `Delete ${q.title}`, onclick: async (e) => { e.stopPropagation();
+              if (!(await confirmBox(`Delete “${q.title}”?`, "The quiz and its questions are removed permanently. A quiz that has already been run can't be deleted (its results are kept) — turn it off instead.", "Delete quiz", true))) return;
+              try { await api(`/admin/lms/quizzes/${q.id}`, { method: "DELETE" }); toast("Quiz deleted"); renderRoute(); } catch (err) { toast(err.message); } } }, "🗑"))))))))
         : h("p", { class: "muted" }, "No quizzes yet. Create the first one above."))), "#/lms");
 }
 
@@ -161,6 +164,10 @@ async function lmsQuizEditor(id) {
   const pass = h("input", { type: "number", min: 1, max: 100, value: q.pass_mark });
   const saveQuiz = h("button", { class: "btn ghost sm", onclick: async () => { try { await api(`/admin/lms/quizzes/${id}`, { method: "PATCH", body: { title: t.value, position_id: pos.value || null, pass_mark: +pass.value } }); toast("Quiz saved"); } catch (e) { toast(e.message); } } }, "Save");
   const toggle = h("button", { class: q.active ? "btn danger sm" : "btn teal sm", onclick: async () => { await api(`/admin/lms/quizzes/${id}`, { method: "PATCH", body: { active: !q.active } }); reload(); } }, q.active ? "Turn off" : "Turn on");
+  const del = h("button", { class: "btn danger sm", onclick: async () => {
+    if (!(await confirmBox(`Delete “${q.title}”?`, "The quiz and its questions are removed permanently. A quiz that has already been run can't be deleted (its results are kept) — turn it off instead.", "Delete quiz", true))) return;
+    try { await api(`/admin/lms/quizzes/${id}`, { method: "DELETE" }); toast("Quiz deleted"); location.hash = "#/lms?tab=quizzes"; } catch (e) { toast(e.message); }
+  } }, "Delete quiz");
   // question form (new or edit)
   const qForm = (existing) => {
     const text = h("textarea", { rows: 2, maxlength: 500, placeholder: "Question" }); text.value = existing?.text || "";
@@ -182,7 +189,7 @@ async function lmsQuizEditor(id) {
   const editQ = async (x) => { const f = qForm(x); const ok = await modal("Edit question", f.el, (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: async () => { try { await api(`/admin/lms/questions/${x.id}`, { method: "PATCH", body: f.payload() }); close(true); } catch (e) { f.err.textContent = e.message; } } }, "Save")]); if (ok) reload(); };
   const active = q.questions.filter((x) => x.active);
   return shell(h("div", {},
-    pageHead(q.title, `${active.length} question${active.length === 1 ? "" : "s"} · pass mark ${q.pass_mark}% · ${q.active ? "on — trainers can run it" : "off — hidden from trainers"}`, h("a", { class: "btn ghost sm", href: "#/lms?tab=quizzes" }, "← Quizzes"), toggle),
+    pageHead(q.title, `${active.length} question${active.length === 1 ? "" : "s"} · pass mark ${q.pass_mark}% · ${q.active ? "on — trainers can run it" : "off — hidden from trainers"}`, h("a", { class: "btn ghost sm", href: "#/lms?tab=quizzes" }, "← Quizzes"), toggle, del),
     h("div", { class: "card" }, h("h2", {}, "Quiz settings"), h("div", { class: "grid g4", style: "margin-top:10px;align-items:end" }, field("Title", t), field("Position", pos), field("Pass mark %", pass), h("div", {}, saveQuiz))),
     h("div", { class: "card" }, h("h2", {}, "Questions"),
       h("p", { class: "muted small" }, "Staff see the questions in a different order each time. Editing a question never changes results already collected."),
