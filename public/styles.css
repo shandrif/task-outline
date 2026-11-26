@@ -606,3 +606,11 @@ main.busy .page { opacity: .55; }
 .tp-missing { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 .tp-row3 { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.6fr) 70px; }
 @media (max-width: 640px) { .tp-head, .tp-row { grid-template-columns: minmax(0, 1fr) 90px 56px; } .tp-row3 { grid-template-columns: minmax(0, 1fr) 90px 56px; } .tp-tr { display: none; } }
+/* onboarding: weekly columns */
+.ch-cols { display: flex; align-items: flex-end; gap: 6px; height: 210px; padding-top: 4px; overflow-x: auto; }
+.ch-col { flex: 1 0 34px; max-width: 70px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; border-radius: 8px; padding: 2px; outline: none; }
+.ch-col:hover, .ch-col:focus-visible { background: rgba(212,179,139,.16); }
+.ch-colbar { width: 100%; max-width: 40px; display: flex; flex-direction: column-reverse; border-radius: 6px 6px 2px 2px; overflow: hidden; }
+.ch-colbar i { display: block; min-height: 2px; }
+.ch-colv { font-size: 12px; }
+.ch-col small { font-size: 11px; color: var(--muted); white-space: nowrap; }

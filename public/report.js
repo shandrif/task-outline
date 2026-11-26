@@ -370,10 +370,14 @@ function reportRecords(key, cfg, rows, cols, { kindLabel = {}, total = rows.leng
   if (key === "onboarding") kpis.push({ label: "Currently in training", value: rows.filter((r) => r.training_start && !r.training_end).length, tone: "tan" });
   else if (admin) kpis.push({ label: "Trainers contributing", value: new Set(rows.map((r) => r.created_by_name)).size, tone: "tan" });
   const groups = (typeof BREAKDOWNS !== "undefined" && BREAKDOWNS[key]) || [];
+  const onb = key === "onboarding" ? onboardingSections(rows, kindLabel, admin) : null;
   return hmReport({
     file: xFileName(`${what}`), title: `${what} Report`, period: periodText(), scope: [admin ? "All trainers" : null, xScopeText(rows.length, total, "records")].filter(Boolean).join(" · "),
     kpis,
-    sections: [
+    sections: onb ? [...onb.sections,
+      { title: "Needs attention", note: `lowest verification % first${low.length > 10 ? ` · 10 of ${low.length}` : ""}`, cols: [["Name", 3, "left"], ["Employee ID", 1], [detailLabel, 3, "left"], ["Entered by", 2, "left"], ["Verification", 1]],
+        rows: [...low].sort((a, b) => a.pct - b.pct).slice(0, 10).map((r) => [cName(r.name), r.emp_id || "", { v: detail(r), align: "left" }, { v: r.created_by_name || "", align: "left" }, cPct(r.pct)]),
+        empty: `Nobody is below ${WARN}%. 🎉` }] : [
       ...groups.filter(([k]) => (k === "kind" ? xMany(rows, (r) => r.kind) : rows.some((r) => r[k]))).slice(0, 4).map(([k, l]) =>
         xRollup(`By ${l.toLowerCase()}`, null, rows, (r) => (k === "kind" ? kindLabel[r.kind] : r[k]), { label: l, count: "Records", pctFn: (r) => r.pct, pctLabel: "Avg verification", top: 12 })),
       admin && xMany(rows, (r) => r.created_by_name) && xRollup("By trainer", "who entered the records", rows, (r) => r.created_by_name, { label: "Trainer", count: "Records", pctFn: (r) => r.pct, pctLabel: "Avg verification" }),
@@ -386,8 +390,45 @@ function reportRecords(key, cfg, rows, cols, { kindLabel = {}, total = rows.leng
       cols: cols.filter((c) => c.key !== "actions").map((c) => {
         const t = c.key === "kind" ? "text" : c.key === "created_at" ? "datetime" : c.key === "pct" ? "pct" : ({ pct: "pct", date: "date", textarea: "long" })[ftype[c.key]] || "text";
         return { label: c.label, type: t, bold: c.key === "name", width: t === "long" ? 45 : c.key === "name" ? 24 : undefined, get: (r) => (c.key === "kind" ? kindLabel[r.kind] || r.kind : r[c.key]) };
-      }) }],
+      }) }, ...(onb ? onb.sheets : [])],
   });
+}
+
+// Onboarding: the same numbers as the charts on the Onboarding page, as Excel tables with bars
+function onboardingSections(rows, kindLabel, admin) {
+  const s = onbStats(rows, kindLabel);
+  const share = (n) => (s.total ? Math.round((1000 * n) / s.total) / 10 : null);
+  const maxW = Math.max(1, ...s.weeks.map((w) => w.total)), maxN = Math.max(1, ...s.nationalities.map((g) => g.n)), maxD = Math.max(1, ...s.positions.map((g) => g.days || 0));
+  const fmtW = (w) => new Date(`${w}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const multiKind = s.kinds.length > 1;
+  const dBar = (d) => ({ v: d == null ? "" : "█".repeat(Math.max(1, Math.round((d / maxD) * 12))), color: XC.warn, align: "left", size: 9 });
+  const sections = [
+    { title: "Training status", note: s.status.days == null ? "where each new joiner is now" : `finished trainings took ${s.status.days} days on average`, cols: [["Status", 3, "left"], ["Employees", 1], ["Share", 1], ["Progress", 5, "left"]],
+      rows: [["Finished", s.status.finished, XC.good], ["In training", s.status.training, XC.warn], ["Not started", s.status.not_started, XC.muted]].map(([l, n, c]) => [cName(l), n, { v: share(n) == null ? "—" : share(n) / 100, fmt: "0.0%", bold: true, color: c }, { v: "█".repeat(Math.max(n ? 1 : 0, Math.round((n / Math.max(1, s.total)) * 30))), color: c, align: "left", size: 9 }]) },
+    { title: "Verification results", note: s.avg == null ? "no scores yet" : `average ${s.avg}% · theory ${s.theory ?? "—"}% · practical ${s.practical ?? "—"}%`, cols: [["Result", 3, "left"], ["Employees", 1], ["Share", 1], ["Progress", 5, "left"]],
+      rows: [[`Strong · ${GOOD}% or more`, s.bands.strong, XC.good], [`On track · ${WARN}–${GOOD - 1}%`, s.bands.ok, XC.ink], [`Needs attention · below ${WARN}%`, s.bands.low, XC.bad], ["No score yet", s.bands.none, XC.muted]].map(([l, n, c]) => [cName(l), n, { v: share(n) == null ? "—" : share(n) / 100, fmt: "0.0%", bold: true, color: c }, { v: "█".repeat(Math.max(n ? 1 : 0, Math.round((n / Math.max(1, s.total)) * 30))), color: c, align: "left", size: 9 }]) },
+    { title: "New joiners per week", note: "by date of joining", cols: [["Week of", 2, "left"], ...(multiKind ? s.kinds.slice(0, 3).map((k) => [k.label, 1]) : []), ["Total", 1], ["Volume", multiKind ? 7 - Math.min(3, s.kinds.length) : 7, "left"]],
+      rows: s.weeks.map((w) => [cName(fmtW(w.wk)), ...(multiKind ? s.kinds.slice(0, 3).map((k) => w.by[k.key] || 0) : []), { v: w.total, bold: true }, cVol(w.total, maxW, 24)]), empty: "Nobody joined in this period." },
+    { title: "By position", note: "training progress and scores", cols: [["Position", 2, "left"], ["Joiners", 1], ["Finished", 1], ["In training", 1], ["Theory", 1], ["Practical", 1], ["Average", 1], ["Progress", 2, "left"]],
+      rows: s.positions.map((g) => [cName(g.name), g.n, g.finished, g.training, cPct(g.theory), cPct(g.practical), cPct(g.avg), cBar(g.avg)]) },
+    s.positions.some((g) => g.days != null) && { title: "Days in training · by position", note: "training start to training end, finished trainings only", cols: [["Position", 3, "left"], ["Finished", 1], ["Avg days", 1], ["Length", 5, "left"]],
+      rows: s.positions.filter((g) => g.days != null).sort((a, b) => b.days - a.days).map((g) => [cName(g.name), g.finished, { v: g.days, bold: true }, dBar(g.days)]) },
+    { title: "Nationalities", note: s.nationalities.length > 10 ? `top 10 of ${s.nationalities.length}` : null, cols: [["Nationality", 3, "left"], ["Joiners", 1], ["Average", 1], ["Volume", 5, "left"]],
+      rows: s.nationalities.slice(0, 10).map((g) => [cName(g.name), g.n, cPct(g.avg), cVol(g.n, maxN, 24)]) },
+    s.locations.some((g) => g.name !== "Not set") && { title: "Locations", note: "external and international onboarding", cols: [["Location", 3, "left"], ["Joiners", 1], ["Average", 1], ["Progress", 5, "left"]],
+      rows: s.locations.filter((g) => g.name !== "Not set").slice(0, 10).map((g) => [cName(g.name), g.n, cPct(g.avg), cBar(g.avg)]) },
+    admin && s.trainers.length > 1 && { title: "Entered by", cols: [["Trainer", 3, "left"], ["Joiners", 1], ["Finished", 1], ["Average", 1], ["Progress", 4, "left"]],
+      rows: s.trainers.map((g) => [cName(g.name), g.n, g.finished, cPct(g.avg), cBar(g.avg)]) },
+  ].filter(Boolean);
+  const sheets = [
+    { name: "By position", title: "Onboarding by position", rows: s.positions, tab: XC.ink, summary: plural(s.positions.length, "position"),
+      cols: [{ label: "Position", get: (g) => g.name, width: 22, bold: true }, { label: "New joiners", get: (g) => g.n, type: "int", width: 11 }, { label: "Finished", get: (g) => g.finished, type: "int" }, { label: "In training", get: (g) => g.training, type: "int", width: 11 },
+        { label: "Not started", get: (g) => g.not_started, type: "int", width: 11 }, { label: "Avg days in training", get: (g) => g.days, type: "num", width: 13 }, { label: "Theory", get: (g) => g.theory, type: "pct" }, { label: "Practical", get: (g) => g.practical, type: "pct" },
+        { label: "Average", get: (g) => g.avg, type: "pct" }, { label: `Strong (${GOOD}%+)`, get: (g) => g.strong, type: "int", width: 12 }, { label: `Below ${WARN}%`, get: (g) => g.low, type: "int", width: 11 }] },
+    { name: "Weekly", title: "New joiners per week", rows: s.weeks, tab: XC.tan, summary: plural(s.weeks.length, "week"),
+      cols: [{ label: "Week of", get: (w) => fmtW(w.wk), width: 16 }, ...s.kinds.map((k) => ({ label: k.label, get: (w) => w.by[k.key] || 0, type: "int", width: 12 })), { label: "Total", get: (w) => w.total, type: "int", bold: true }] },
+  ];
+  return { sections, sheets };
 }
 
 // ---------- Store visit reports ----------

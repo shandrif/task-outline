@@ -118,6 +118,7 @@ async function moduleView(key) {
     holder.replaceChildren(
       multi && h("div", { class: "tabs", style: "margin-bottom:12px" }, [["", "All"], ...cfg.kinds.map((k) => [k.key, k.label])].map(([k, l]) => h("button", { type: "button", class: "tab" + (k === kind ? " on" : ""), onclick: () => { kind = k; draw(); } }, l, h("span", { class: "muted small" }, ` ${k ? rows.filter((r) => r.kind === k).length : rows.length}`)))),
       h("div", { class: "grid g4" }, tiles),
+      key === "onboarding" && onboardingCharts(shown, kindLabel, admin, per),
       shown.length > 0 && breakdown(shown.map((r) => ({ ...r, kind: kindLabel[r.kind] || r.kind })), [...BREAKDOWNS[key].filter(([k]) => k === "kind" ? multi && !kind : shown.some((r) => r[k])), ...(admin ? [["created_by_name", "Entered by"]] : [])]),
       h("div", { class: "card" }, h("h2", {}, "Records"), g.el));
   }

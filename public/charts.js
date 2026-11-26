@@ -147,3 +147,82 @@ async function dashboardCharts(d, admin) {
     h("div", { class: "ch-head" }, h("h2", {}, "Performance at a glance"), h("span", { class: "muted small" }, `Charts follow the period above (${per}).`)),
     h("div", { class: "ch-grid" }, trend, outcomes), contrib, weak, gaps, highs);
 }
+
+// ================= Onboarding: numbers shared by the page charts and the Excel export =================
+const dayDiff = (a, b) => { if (!a || !b) return null; const d = (Date.parse(b) - Date.parse(a)) / 864e5; return Number.isFinite(d) && d >= 0 ? d : null; };
+const avgOfList = (v) => { const x = v.filter((n) => n != null && Number.isFinite(+n)); return x.length ? Math.round((10 * x.reduce((s, n) => s + +n, 0)) / x.length) / 10 : null; };
+const weekStart = (s) => { const d = new Date(`${String(s).slice(0, 10)}T00:00:00Z`); if (Number.isNaN(+d)) return null; d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+function onbStats(rows, kindLabel) {
+  const status = (r) => (r.training_end ? "finished" : r.training_start ? "training" : "not_started");
+  const days = (r) => dayDiff(r.training_start, r.training_end);
+  const group = (keyFn) => {
+    // typed values are grouped without regard to capitals or spaces ("SAUDI", "saudi", "Saudi" are one group)
+    const m = new Map(), spell = new Map();
+    for (const r of rows) {
+      const raw = String(keyFn(r) ?? "").trim().replace(/\s+/g, " ") || "Not set", k = raw.toLowerCase();
+      if (!m.has(k)) { m.set(k, []); spell.set(k, new Map()); }
+      m.get(k).push(r); spell.get(k).set(raw, (spell.get(k).get(raw) || 0) + 1);
+    }
+    const nice = (k) => { const best = [...spell.get(k).entries()].sort((a, b) => b[1] - a[1])[0][0]; return best === best.toUpperCase() || best === best.toLowerCase() ? best.toLowerCase().replace(/(^|[\s/-])\S/g, (c) => c.toUpperCase()) : best; };
+    return [...m.entries()].map(([k, l]) => ({
+      name: nice(k), n: l.length, avg: avgOfList(l.map((r) => r.pct)), theory: avgOfList(l.map((r) => r.theory)), practical: avgOfList(l.map((r) => r.practical)),
+      finished: l.filter((r) => status(r) === "finished").length, training: l.filter((r) => status(r) === "training").length, not_started: l.filter((r) => status(r) === "not_started").length,
+      days: avgOfList(l.map(days)), strong: l.filter((r) => r.pct != null && r.pct >= GOOD).length, low: l.filter((r) => r.pct != null && r.pct < WARN).length,
+    })).sort((a, b) => b.n - a.n || String(a.name).localeCompare(String(b.name)));
+  };
+  // new joiners per week, by date of joining (entry date if there is none)
+  const kinds = [...new Set(rows.map((r) => r.kind))];
+  const wk = new Map();
+  for (const r of rows) {
+    const w = weekStart(r.doj || r.created_at); if (!w) continue;
+    if (!wk.has(w)) wk.set(w, { wk: w, total: 0, by: {} });
+    const x = wk.get(w); x.total++; x.by[r.kind] = (x.by[r.kind] || 0) + 1;
+  }
+  const scored = rows.filter((r) => r.pct != null);
+  return {
+    total: rows.length, kinds: kinds.map((k) => ({ key: k, label: kindLabel[k] || k })),
+    weeks: [...wk.values()].sort((a, b) => a.wk.localeCompare(b.wk)),
+    status: { finished: rows.filter((r) => status(r) === "finished").length, training: rows.filter((r) => status(r) === "training").length, not_started: rows.filter((r) => status(r) === "not_started").length, days: avgOfList(rows.map(days)) },
+    bands: { strong: scored.filter((r) => r.pct >= GOOD).length, ok: scored.filter((r) => r.pct >= WARN && r.pct < GOOD).length, low: scored.filter((r) => r.pct < WARN).length, none: rows.length - scored.length },
+    avg: avgOfList(rows.map((r) => r.pct)), theory: avgOfList(rows.map((r) => r.theory)), practical: avgOfList(rows.map((r) => r.practical)),
+    positions: group((r) => r.position), nationalities: group((r) => r.nationality), locations: group((r) => r.location),
+    types: group((r) => kindLabel[r.kind] || r.kind), trainers: group((r) => r.created_by_name),
+  };
+}
+
+// vertical columns (counts per week), stacked by part
+function colchart(points, parts, { fmtX }) {
+  if (!points.length) return empty("Nothing in this period.");
+  const top = Math.max(1, ...points.map((p) => p.total));
+  return h("div", {}, parts.length > 1 && legend(parts), chTip(h("div", { class: "ch-cols" }, points.map((p) => h("div", { class: "ch-col", tabindex: 0,
+    "data-tip": tipHtml(`Week of ${fmtX(p.wk)}`, [...parts.filter((a) => p.by[a.key]).map((a) => [a.label, p.by[a.key], a.color]), ["Total", p.total]]) },
+    h("b", { class: "ch-colv" }, p.total),
+    h("div", { class: "ch-colbar", style: `height:${Math.max(4, (100 * p.total) / top)}%` }, parts.map((a) => p.by[a.key] ? h("i", { style: `flex:${p.by[a.key]};background:${a.color}` }) : null)),
+    h("small", {}, fmtX(p.wk)))))));
+}
+
+function onboardingCharts(rows, kindLabel, admin, per) {
+  if (!rows.length) return null;
+  const s = onbStats(rows, kindLabel);
+  const fmtX = (w) => new Date(`${w}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const parts = s.kinds.map((k, i) => ({ ...k, color: CH[i] }));
+  const pctTip = (g, extra = []) => tipHtml(g.name, [["Employees", g.n], ["Avg verification", g.avg == null ? "—" : `${g.avg}%`], ["Theory", g.theory == null ? "—" : `${g.theory}%`], ["Practical", g.practical == null ? "—" : `${g.practical}%`], ...extra]);
+  const ST = [{ key: "finished", label: "Finished", color: CH[2] }, { key: "training", label: "In training", color: CH[3] }, { key: "not_started", label: "Not started", color: CH_REST }];
+  const joiners = chCard("New joiners per week", `By date of joining, ${per}. Hover a week for the numbers.`, colchart(s.weeks, parts, { fmtX }));
+  const status = chCard("Training status", s.status.days == null ? "Where each new joiner is now." : `Where each new joiner is now · finished trainings took ${s.status.days} days on average.`,
+    hbars(ST.map((x) => ({ label: x.label, value: s.status[x.key], color: x.color, tip: tipHtml(x.label, [["Employees", s.status[x.key]], ["Share", `${Math.round((100 * s.status[x.key]) / s.total)}%`]]) })), { max: s.total }));
+  const posStatus = chCard("Positions · training progress", "New joiners per position, split by training status.",
+    stackbars(s.positions.slice(0, 12).map((g) => ({ label: g.name, total: g.n, parts: ST.map((x) => ({ value: g[x.key], color: x.color, label: x.label })) })), ST));
+  const posScore = chCard("Positions · average verification", "Average of theory and practical, per position.",
+    hbars(s.positions.filter((g) => g.avg != null).slice(0, 12).map((g) => ({ label: g.name, sub: g.theory != null && g.practical != null ? `theory ${g.theory}% · practical ${g.practical}%` : "", value: g.avg, color: g.avg >= GOOD ? CH[2] : g.avg >= WARN ? CH[3] : CH[1], tip: pctTip(g) })), { pctScale: true, fmt: (v) => `${v}%` }));
+  const B = [{ key: "strong", label: `Strong (${GOOD}%+)`, color: CH[2] }, { key: "ok", label: `On track (${WARN}–${GOOD - 1}%)`, color: CH[0] }, { key: "low", label: `Attention (<${WARN}%)`, color: CH[1] }, { key: "none", label: "No score yet", color: CH_REST }];
+  const bands = chCard("Verification results", s.avg == null ? "No scores yet." : `Average ${s.avg}% · theory ${s.theory ?? "—"}% · practical ${s.practical ?? "—"}%.`,
+    hbars(B.map((x) => ({ label: x.label, value: s.bands[x.key], color: x.color })), { max: s.total }));
+  const nat = chCard("Nationalities", "Top 10 by number of new joiners.", hbars(s.nationalities.slice(0, 10).map((g) => ({ label: g.name, value: g.n, color: CH[6], tip: pctTip(g) }))));
+  const daysCard = s.positions.some((g) => g.days != null) && chCard("Days in training · by position", "Average from training start to training end (finished trainings only).",
+    hbars(s.positions.filter((g) => g.days != null).sort((a, b) => b.days - a.days).map((g) => ({ label: g.name, sub: `${g.finished} finished`, value: g.days, color: CH[3], tip: tipHtml(g.name, [["Average days", g.days], ["Finished trainings", g.finished]]) })), { fmt: (v) => `${v} d` }));
+  const byTrainer = admin && s.trainers.length > 1 && chCard("Entered by", "New joiners each trainer recorded.", hbars(s.trainers.map((g) => ({ label: g.name, value: g.n, color: CH[0], tip: pctTip(g) }))));
+  const cards = [joiners, status, posStatus, posScore, bands, nat, daysCard, byTrainer].filter(Boolean);
+  return h("div", { class: "ch-wrap" }, h("div", { class: "ch-head" }, h("h2", {}, "Onboarding at a glance"), h("span", { class: "muted small" }, `Charts follow the period and the tab above (${per}).`)),
+    h("div", { class: "ch-grid" }, cards));
+}
