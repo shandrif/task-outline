@@ -464,8 +464,8 @@ async function handle(request, env, ctx) {
     const base = `FROM eval_sections es JOIN evaluations e ON e.id=es.evaluation_id JOIN sections s ON s.id=es.section_id JOIN positions p ON p.id=s.position_id
                   WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3)`;
     const [topics, matrix, trainers, catalog] = await env.DB.batch([
-      env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, COUNT(DISTINCT e.store_id || '|' || lower(trim(e.staff_name))) staff, COUNT(*) evals, COUNT(DISTINCT e.trainer_id) trainers, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY s.id`).bind(...A),
-      env.DB.prepare(`SELECT e.trainer_id, s.id section_id, COUNT(DISTINCT e.store_id || '|' || lower(trim(e.staff_name))) n, COUNT(*) evals, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY e.trainer_id, s.id`).bind(...A),
+      env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, COUNT(*) staff, COUNT(DISTINCT e.trainer_id) trainers, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY s.id`).bind(...A),
+      env.DB.prepare(`SELECT e.trainer_id, s.id section_id, COUNT(*) n, SUM(es.score) sc, SUM(es.max) mx ${base} GROUP BY e.trainer_id, s.id`).bind(...A),
       env.DB.prepare(`SELECT DISTINCT t.id, t.name FROM evaluations e JOIN trainers t ON t.id=e.trainer_id WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) ORDER BY t.name COLLATE NOCASE`).bind(...A),
       // every active topic of the positions this trainer (or anyone) evaluated in the period: lets the page show topics not verified yet
       env.DB.prepare(`SELECT s.id section_id, s.title, p.id position_id, p.name position, s.sort FROM sections s JOIN positions p ON p.id=s.position_id

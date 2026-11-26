@@ -95,7 +95,7 @@ async function dashboardCharts(d, admin) {
   const recN = (m) => d.records.filter((r) => r.module === m).reduce((n, r) => n + r.n, 0);
   const wsTotal = c.workshop.reduce((n, r) => n + r.n, 0);
   const outcomes = chCard("Outcomes delivered", `Everything recorded ${per}.`, hbars([
-    { label: "Staff evaluated (SBS)", value: d.verify.people ?? d.verify.evaluations, sub: `${d.verify.evaluations} evaluations · ${d.verify.visits} visits · ${d.verify.stores} stores` },
+    { label: "Staff evaluated (SBS)", value: d.verify.evaluations, sub: `${d.verify.visits} visits · ${d.verify.stores} stores` },
     { label: "Employees onboarded", value: recN("onboarding") }, { label: "NPD verifications", value: recN("npd") },
     { label: "Store visit reports", value: d.sv.n, sub: `${d.sv.stores} stores` }, { label: "Coaching sessions", value: recN("coaching") },
     { label: "People development", value: recN("development") }, { label: "Workshop / project entries", value: wsTotal },
