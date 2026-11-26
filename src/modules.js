@@ -24,7 +24,7 @@ export const MODULES = {
   onboarding: {
     title: "Onboarding",
     kinds: [
-      { key: "hm", label: "HM", fields: ONB_BASE },
+      { key: "hm", label: "HM", fields: [...ONB_BASE, T("assigned_store", "Assigned store (after training)", { type: "store", placeholder: "Search a store — once training has ended" })] },
       { key: "external", label: "External", fields: [...ONB_BASE, T("location", "Location", { required: true, placeholder: "e.g. Qidiya city" })] },
       { key: "international", label: "International", fields: [...ONB_BASE, T("location", "Location", { required: true, placeholder: "e.g. Iraq" })] },
     ],
@@ -123,6 +123,19 @@ export async function moduleRoutes(c) {
     throw bad("Choose the product from the list — only the admin can add product names");
   };
 
+  // ---------- onboarding: the store a new joiner was placed in after training ----------
+  const placement = async (mod, v) => {
+    if (mod !== "onboarding" || !("assigned_store" in v)) return;
+    for (const k of ["placed_region", "placed_city", "placed_am", "placed_rom"]) delete v[k];
+    const label = String(v.assigned_store || "").trim();
+    if (!label) { v.assigned_store = ""; return; }
+    if (!v.training_end) throw bad("Enter the training end date before assigning a store");
+    const code = label.split("·")[0].trim();
+    const st = await env.DB.prepare("SELECT username code, name, region, city, area_manager, rom FROM stores WHERE username=? COLLATE NOCASE AND active=1").bind(code).first();
+    if (!st) throw bad("Choose the assigned store from the list");
+    Object.assign(v, { assigned_store: `${st.code} · ${st.name}`, placed_region: st.region || null, placed_city: st.city || null, placed_am: st.area_manager || null, placed_rom: st.rom || null });
+  };
+
   // ---------- generic records ----------
   const clean = (kindDef, b, relax = new Set()) => {
     const out = {};
@@ -165,6 +178,7 @@ export async function moduleRoutes(c) {
     const kd = kindOf(b.module, b.kind);
     const v = clean(kd, b);
     await checkProduct(b.module, v, null);
+    await placement(b.module, v);
     if (kd.fields.some((f) => f.type === "designation")) v.position = await checkDesignation(env, "staff", v.position, { required: true, label: "Position", bad });
     const p = pack(b.module, kd, v);
     const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?)")
@@ -181,6 +195,7 @@ export async function moduleRoutes(c) {
       const kd = kindOf(cur.module, cur.kind);
       const v = clean(kd, b, cur.sv_id ? new Set(["pct", "emp_id"]) : undefined);   // a coaching request from a store visit: the score comes later
       await checkProduct(cur.module, v, cur.product);
+      await placement(cur.module, v);
       if (kd.fields.some((f) => f.type === "designation")) v.position = await checkDesignation(env, "staff", v.position, { current: cur.position, required: true, label: "Position", bad });
       const p = pack(cur.module, kd, v);
       if (cur.sv_id) p.data = JSON.stringify({ ...JSON.parse(p.data), sv_id: cur.sv_id });   // keep the link to the store visit report

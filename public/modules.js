@@ -117,7 +117,7 @@ async function moduleView(key) {
     const g = grid({
       rows: shown, cols, sort: { key: "created_at", dir: -1 }, empty: "No records yet. Use “+ Add record”.", onRow: (r) => ((admin || r.created_by === session.trainer.id) ? open(r) : null),
       searchIn: (r) => Object.values(r).filter((v) => typeof v === "string").join(" "),
-      filters: [...(key === "coaching" ? [{ key: "status", label: "statuses", get: (r) => (r.pct == null ? "Needs coaching" : "Done") }] : []), ...["position", "nationality", "location", "topic", "product_name", "am", "rom", "region", "city"].filter((k) => cols.some((c) => c.key === k)).map((k) => ({ key: k, label: ({ position: "positions", nationality: "nationalities", location: "locations", topic: "topics", product_name: "products", am: "area managers", rom: "ROMs", region: "regions", city: "cities" })[k] })), ...(admin ? [{ key: "created_by_name", label: "trainers" }] : [])],
+      filters: [...(key === "coaching" ? [{ key: "status", label: "statuses", get: (r) => (r.pct == null ? "Needs coaching" : "Done") }] : []), ...["assigned_store", "position", "nationality", "location", "topic", "product_name", "am", "rom", "region", "city"].filter((k) => cols.some((c) => c.key === k)).map((k) => ({ key: k, label: ({ assigned_store: "assigned stores", position: "positions", nationality: "nationalities", location: "locations", topic: "topics", product_name: "products", am: "area managers", rom: "ROMs", region: "regions", city: "cities" })[k] })), ...(admin ? [{ key: "created_by_name", label: "trainers" }] : [])],
       toolbar: [h("button", { class: "btn teal sm", onclick: () => reportRecords(key, cfg, g.rows(), cols, { kindLabel, total: shown.length, kind }) }, "Export to Excel")],
     });
     holder.replaceChildren(...[
@@ -180,6 +180,14 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
       return h("div", { class: f.type === "textarea" ? "span2" : "" }, h("label", {}, f.label, f.required && " *"), el,
         f.type === "product" && el.dataset.empty && h("div", { class: "small muted", style: "margin-top:4px" }, admin ? "Add the product names first: use “Manage products” on this page." : "The admin has not added any product names yet."));
     });
+    // the assigned store can only be chosen once training has ended
+    if (inputs.assigned_store && inputs.training_end) {
+      const a = inputs.assigned_store, te = inputs.training_end;
+      const hint = h("div", { class: "small muted", style: "margin-top:4px" });
+      a.after(hint);
+      const sync = () => { a.disabled = !te.value; hint.textContent = te.value ? "Search by store code or name." : "Enter “Training ended” first — a store is assigned after training."; };
+      te.addEventListener("input", sync); te.addEventListener("change", sync); sync();
+    }
     body.replaceChildren(...[list, kindSel && field(modKey === "development" ? "Track" : "Type", kindSel), h("div", { class: "grid g2" }, els), modKey === "onboarding" && live, err].filter(Boolean));
     refresh();
   }

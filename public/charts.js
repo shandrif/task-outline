@@ -187,6 +187,16 @@ function onbStats(rows, kindLabel) {
     avg: avgOfList(rows.map((r) => r.pct)), theory: avgOfList(rows.map((r) => r.theory)), practical: avgOfList(rows.map((r) => r.practical)),
     positions: group((r) => r.position), nationalities: group((r) => r.nationality), locations: group((r) => r.location),
     types: group((r) => kindLabel[r.kind] || r.kind), trainers: group((r) => r.created_by_name),
+    // HM placement: where new joiners went after training
+    hm: rows.filter((r) => r.kind === "hm").length,
+    placed: rows.filter((r) => r.assigned_store).length,
+    waiting: rows.filter((r) => r.kind === "hm" && r.training_end && !r.assigned_store).length,
+    hmTraining: rows.filter((r) => r.kind === "hm" && !r.training_end).length,
+    placedRegions: group((r) => r.assigned_store && r.placed_region).filter((g) => g.name !== "Not set"),
+    placedCities: group((r) => r.assigned_store && r.placed_city).filter((g) => g.name !== "Not set"),
+    placedStores: group((r) => r.assigned_store).filter((g) => g.name !== "Not set"),
+    placedAMs: group((r) => r.assigned_store && r.placed_am).filter((g) => g.name !== "Not set"),
+    placedRows: rows.filter((r) => r.assigned_store),
   };
 }
 
@@ -222,7 +232,18 @@ function onboardingCharts(rows, kindLabel, admin, per) {
   const daysCard = s.positions.some((g) => g.days != null) && chCard("Days in training · by position", "Average from training start to training end (finished trainings only).",
     hbars(s.positions.filter((g) => g.days != null).sort((a, b) => b.days - a.days).map((g) => ({ label: g.name, sub: `${g.finished} finished`, value: g.days, color: CH[3], tip: tipHtml(g.name, [["Average days", g.days], ["Finished trainings", g.finished]]) })), { fmt: (v) => `${v} d` }));
   const byTrainer = admin && s.trainers.length > 1 && chCard("Entered by", "New joiners each trainer recorded.", hbars(s.trainers.map((g) => ({ label: g.name, value: g.n, color: CH[0], tip: pctTip(g) }))));
-  const cards = [joiners, status, posStatus, posScore, bands, nat, daysCard, byTrainer].filter(Boolean);
+  // HM placement: trained and sent to a store
+  const PL = [{ key: "placed", label: "Assigned to a store", color: CH[2] }, { key: "waiting", label: "Trained · no store yet", color: CH[3] }, { key: "hmTraining", label: "Still in training", color: CH_REST }];
+  const placedCard = s.hm > 0 && chCard("HM new joiners · placed in stores", `${s.placed} of ${s.hm} HM new joiners have been assigned to a store after training.`,
+    hbars(PL.map((x) => ({ label: x.label, value: s[x.key], color: x.color })), { max: s.hm }));
+  const whereCard = s.placed > 0 && chCard("Where they went", "Assigned stores by region and city.",
+    h("div", { class: "ch-two" },
+      h("div", {}, h("div", { class: "ch-mini" }, "By region"), hbars(s.placedRegions.map((g) => ({ label: g.name, value: g.n, color: CH[0], tip: tipHtml(g.name, [["New joiners placed", g.n], ["Avg verification", g.avg == null ? "—" : `${g.avg}%`]]) })))),
+      h("div", {}, h("div", { class: "ch-mini" }, "By city"), hbars(s.placedCities.slice(0, 10).map((g) => ({ label: g.name, value: g.n, color: CH[6], tip: tipHtml(g.name, [["New joiners placed", g.n]]) }))))));
+  const storesCard = s.placed > 0 && chCard("Stores receiving new joiners", "Top 10 stores by number of new joiners assigned.",
+    hbars(s.placedStores.slice(0, 10).map((g) => { const r0 = s.placedRows.find((r) => r.assigned_store === g.name || String(r.assigned_store).toLowerCase() === g.name.toLowerCase()); return { label: g.name, sub: r0 ? [r0.placed_city, r0.placed_am].filter(Boolean).join(" · ") : "", value: g.n, color: CH[2],
+      tip: tipHtml(g.name, [["New joiners", g.n], ["Positions", [...new Set(s.placedRows.filter((r) => String(r.assigned_store).toLowerCase() === g.name.toLowerCase()).map((r) => r.position))].join(", ")]]) }; })));
+  const cards = [joiners, status, placedCard, whereCard, storesCard, posStatus, posScore, bands, nat, daysCard, byTrainer].filter(Boolean);
   return h("div", { class: "ch-wrap" }, h("div", { class: "ch-head" }, h("h2", {}, "Onboarding at a glance"), h("span", { class: "muted small" }, `Charts follow the period and the tab above (${per}).`)),
     h("div", { class: "ch-grid" }, cards));
 }
