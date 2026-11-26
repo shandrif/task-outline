@@ -76,8 +76,9 @@ async function hmReport(spec) {
     const meta = [spec.scope, spec.period, `Generated ${generated} by ${who}`].filter(Boolean).join("  ·  ");
     const print = { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
 
-    // ================= Dashboard =================
-    const ws = wb.addWorksheet("Dashboard", { properties: { tabColor: { argb: "FF" + XC.ink } }, views: [{ showGridLines: false }], pageSetup: print });
+    // ================= dashboard pages (the first one, then any extra analytics pages) =================
+    const drawDash = (spec) => {
+    const ws = wb.addWorksheet((spec.sheetName || "Dashboard").replace(/[*?:\\/[\]]+/g, "-").slice(0, 31), { properties: { tabColor: { argb: "FF" + (spec.tab || XC.ink) } }, views: [{ showGridLines: false }], pageSetup: print });
     ws.columns = [{ width: 2 }, ...Array(10).fill({ width: 13.5 }), { width: 2 }];
     ws.headerFooter.oddFooter = "&L&8HM Training Division&R&8Page &P of &N";
     for (let r = 1; r <= 4; r++) for (let c = 1; c <= 12; c++) ws.getCell(r, c).fill = xFill(XC.bg);
@@ -170,6 +171,9 @@ async function hmReport(spec) {
     ws.mergeCells(row, 2, row, 11);
     Object.assign(ws.getCell(row, 2), { value: spec.tip || "Every record is on the next sheet(s) — use the filter arrows in the header row to sort or filter.", font: xFont({ size: 9, italic: true, color: XC.muted }) });
     ws.pageSetup.printArea = `A1:L${row}`;
+    };
+    drawDash(spec);
+    for (const pg of spec.pages || []) drawDash({ ...pg, scope: pg.scope ?? spec.scope });
 
     // ================= data sheets =================
     for (const s of spec.sheets || []) {

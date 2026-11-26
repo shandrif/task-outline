@@ -263,7 +263,8 @@ async function homeView() {
   ];
   return shell(h("div", {},
     pageHead(admin ? "Master dashboard" : "My dashboard", admin ? "All six areas at a glance. Open any card for its own dashboard." : "Your own entries across all six areas.", rangeBar(),
-      h("button", { class: "btn teal sm", onclick: reportDashboard, title: "Download this dashboard as an HM-branded Excel report" }, "Export to Excel")),
+      h("button", { class: "btn teal sm", onclick: reportDashboard, title: "Download this dashboard as an HM-branded Excel report" }, "Export to Excel"),
+      admin && h("button", { class: "btn sm", style: "background:var(--ink);color:var(--bg)", onclick: deptReportDialog, title: "Full report for the whole Training Department" }, "Department report")),
     admin && d.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${d.pending} trainer${d.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, masterTiles()),
     h("div", { class: "grid g3 mcards", style: "margin-top:16px" }, MODULE_ORDER.map(card)),
