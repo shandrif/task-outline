@@ -482,7 +482,7 @@ async function handle(request, env, ctx) {
   if (path === "/api/home/charts" && method === "GET") {
     const tid = isAdmin ? null : session.trainer.id;
     const A = [from, to, tid];
-    const wk = (col) => `date(${col}, 'weekday 0', '-6 days')`;            // week starting Monday
+    const wk = (col) => `date(${col}, 'weekday 6', '-6 days')`;            // week starting Sunday (Sunday–Saturday)
     const [trendEv, trendSv, trendRec, stores, evStore, svStore, visStore, weakest, topics, workshop] = await env.DB.batch([
       env.DB.prepare(`SELECT ${wk("e.submitted_at")} wk, COUNT(*) n, SUM(e.score) sc, SUM(e.max_score) mx FROM evaluations e WHERE ${RE()} AND (?3 IS NULL OR e.trainer_id=?3) GROUP BY wk ORDER BY wk`).bind(...A),
       env.DB.prepare(`SELECT ${wk("r.created_at")} wk, COUNT(r.overall_score) n, SUM(r.overall_score) sm FROM sv_reports r WHERE r.created_at >= ?1 AND r.created_at < ?2 AND (?3 IS NULL OR r.trainer_id=?3) GROUP BY wk ORDER BY wk`).bind(...A),

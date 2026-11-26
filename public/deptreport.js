@@ -4,7 +4,7 @@
 
 const DEPT_PERIODS = (() => {
   const t = new Date(), d = (x) => ymd(x), add = (x, n) => { const y = new Date(x); y.setDate(y.getDate() + n); return y; };
-  const mon = add(t, -((t.getDay() + 6) % 7));            // this week's Monday
+  const mon = add(t, -t.getDay());            // this week's Sunday (weeks run Sunday–Saturday)
   const m1 = new Date(t.getFullYear(), t.getMonth(), 1), lm1 = new Date(t.getFullYear(), t.getMonth() - 1, 1), lmEnd = add(m1, -1);
   return [
     ["thisweek", "This week", d(mon), d(t)], ["lastweek", "Last week", d(add(mon, -7)), d(add(mon, -1))], ["7", "Last 7 days", d(add(t, -6)), d(t)],

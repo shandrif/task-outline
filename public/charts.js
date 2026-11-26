@@ -151,7 +151,7 @@ async function dashboardCharts(d, admin) {
 // ================= Onboarding: numbers shared by the page charts and the Excel export =================
 const dayDiff = (a, b) => { if (!a || !b) return null; const d = (Date.parse(b) - Date.parse(a)) / 864e5; return Number.isFinite(d) && d >= 0 ? d : null; };
 const avgOfList = (v) => { const x = v.filter((n) => n != null && Number.isFinite(+n)); return x.length ? Math.round((10 * x.reduce((s, n) => s + +n, 0)) / x.length) / 10 : null; };
-const weekStart = (s) => { const d = new Date(`${String(s).slice(0, 10)}T00:00:00Z`); if (Number.isNaN(+d)) return null; d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+const weekStart = (s) => { const d = new Date(`${String(s).slice(0, 10)}T00:00:00Z`); if (Number.isNaN(+d)) return null; d.setUTCDate(d.getUTCDate() - d.getUTCDay()); return d.toISOString().slice(0, 10); };
 function onbStats(rows, kindLabel) {
   const status = (r) => (r.training_end ? "finished" : r.training_start ? "training" : "not_started");
   const days = (r) => dayDiff(r.training_start, r.training_end);
