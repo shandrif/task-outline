@@ -537,7 +537,7 @@ async function handle(request, env, ctx) {
     const [v, e] = await env.DB.batch([
       // last 30 days only (date-indexed), so the home page stays cheap however long someone has been visiting
       env.DB.prepare("SELECT COUNT(*) visits, COUNT(DISTINCT store_id) stores FROM visits WHERE trainer_id=? AND started_at >= datetime('now','-30 days')").bind(session.trainer.id),
-      env.DB.prepare("SELECT COUNT(*) evaluations, COUNT(DISTINCT store_id || '|' || lower(trim(staff_name))) staff, COALESCE(SUM(score),0) sum_score, COALESCE(SUM(max_score),0) sum_max FROM evaluations WHERE trainer_id=? AND status='submitted' AND submitted_at >= datetime('now','-30 days')").bind(session.trainer.id),
+      env.DB.prepare("SELECT COUNT(*) evaluations, COALESCE(SUM(score),0) sum_score, COALESCE(SUM(max_score),0) sum_max FROM evaluations WHERE trainer_id=? AND status='submitted' AND submitted_at >= datetime('now','-30 days')").bind(session.trainer.id),
     ]);
     return json({ ...v.results[0], ...e.results[0] });
   }
