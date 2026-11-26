@@ -101,10 +101,11 @@ async function moduleView(key) {
       kpi("", low, `Needs attention · below ${WARN}%`, { title: "Needs attention", headline: `${low} of ${scored.length} scored`, text: [`Records with a verification % below ${WARN}. These are the people or products that need more training.`], sections: [{ title: "Who", head, rows: lowest.filter((r) => r.pct < WARN).map(recRow), empty: "Nobody is below the line." }] }),
     ];
     if (key === "onboarding") {
-      const inT = shown.filter((r) => r.training_start && !r.training_end), rest = shown.filter((r) => !(r.training_start && !r.training_end));
+      const inT = shown.filter((r) => r.training_start && !r.training_end);
       const trow = (r) => [r.name, r.emp_id, kindLabel[r.kind], r.training_start ? fmtDay(r.training_start) : "—", r.training_end ? fmtDay(r.training_end) : "—"];
       tiles[2] = kpi("tank", inT.length, "Currently in training", { title: "Currently in training", headline: `${inT.length} employee${inT.length === 1 ? "" : "s"}`, text: ["A training start date is entered but no end date yet."], sections: [{ title: "Who", head: ["Name", "Employee ID", "Type", "Started", "Ended"], rows: inT.map(trow) }] });
-      tiles[3] = kpi("", rest.length, "Training finished or not started", { title: "Finished or not started", headline: `${rest.length} employee${rest.length === 1 ? "" : "s"}`, text: ["Either the training has an end date, or no start date has been entered yet."], sections: [{ title: "Who", head: ["Name", "Employee ID", "Type", "Started", "Ended"], rows: rest.map(trow) }] });
+      const done = shown.filter((r) => r.training_end);
+      tiles[3] = kpi("", done.length, "Training finished", { title: "Training finished", headline: `${done.length} employee${done.length === 1 ? "" : "s"}`, text: ["The training has an end date."], sections: [{ title: "Who", head: ["Name", "Employee ID", "Type", "Started", "Ended"], rows: done.map(trow) }] });
     }
 
     const cols = columns();
