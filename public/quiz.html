@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F5EDE3">
   <meta name="robots" content="noindex">
-  <title>HM Training · Quiz</title>
+  <title>HM Training · Certification</title>
   <link rel="icon" href="/logo.png">
   <link rel="stylesheet" href="/styles.css">
   <style>
@@ -34,7 +34,7 @@
   const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? "" : v); } for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(c)); return e; };
   const head = (title, sub) => el("div", { class: "qz-head" }, el("img", { src: "/logo.png", alt: "Half Million" }), el("div", {}, el("h1", {}, title), sub && el("div", { class: "muted small" }, sub)));
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  const fail = (msg) => root.replaceChildren(head("HM Training quiz"), el("div", { class: "card" }, el("p", { class: "err", style: "margin:0" }, msg)));
+  const fail = (msg) => root.replaceChildren(head("HM Training certification"), el("div", { class: "card" }, el("p", { class: "err", style: "margin:0" }, msg)));
   if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return fail("This quiz link is not complete. Please scan the QR code again.");
 
   Promise.all([fetch(`/api/quiz/${token}`).then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "This quiz could not be opened."); return j; }),

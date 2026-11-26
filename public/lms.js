@@ -35,7 +35,7 @@ async function lmsTrainer(query) {
     cols: [{ key: "opened_at", label: "Started", render: (s) => fmtDateTime(s.opened_at) }, { key: "title", label: "Quiz", render: (s) => h("b", {}, s.title) }, { key: "store_name", label: "Store", render: (s) => `${s.store_code} · ${s.store_name}` },
       { key: "attempts", label: "Staff", num: true }, { key: "avg_pct", label: "Average", num: true, render: (s) => lmsPct(s.avg_pct) }, { key: "passed", label: "Passed", num: true, render: (s) => `${s.passed || 0}/${s.attempts}` }, { key: "status", label: "", render: stChip }] });
   return shell(h("div", {},
-    pageHead("LMS quizzes", "Show staff a QR code: they answer the quiz on their own phone, and the results come straight to you.", rangeBar()),
+    pageHead("Certification", "Show staff a QR code: they answer the quiz on their own phone, and the results come straight to you.", rangeBar()),
     h("datalist", { id: "lms-stores" }, stores.map((s) => h("option", { value: storeLabel(s) }))),
     h("div", { class: "card" }, h("h2", {}, "Start a quiz session"),
       h("div", { class: "grid g3", style: "margin-top:10px;align-items:end" }, field("Quiz", quizSel), field("Store", storeIn), h("div", {}, start)),
@@ -72,7 +72,7 @@ async function lmsSessionView(id) {
   const close = mine && s.status === "open" && h("button", { class: "btn danger sm", onclick: async () => { if (!(await confirmBox("Close this session?", "The QR code stops working. Results are kept.", "Close session", true))) return; await api(`/lms/sessions/${id}/close`, { method: "POST" }); renderRoute(); } }, "Close session");
   const qs = [...s.questionStats].sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101));
   return shell(h("div", {},
-    pageHead(s.title, `${s.store_code} · ${s.store_name} · ${s.trainer_name} · started ${fmtDateTime(s.opened_at)}`, h("a", { class: "btn ghost sm", href: "#/lms" }, "← LMS"), stChip(s), close),
+    pageHead(s.title, `${s.store_code} · ${s.store_name} · ${s.trainer_name} · started ${fmtDateTime(s.opened_at)}`, h("a", { class: "btn ghost sm", href: "#/lms" }, "← Certification"), stChip(s), close),
     s.status === "open" && h("div", { class: "card lms-show" },
       box,
       h("div", { class: "stack" },
@@ -124,7 +124,7 @@ async function lmsAdmin(query) {
       { key: "passed", label: "Passed", num: true, render: (s) => `${s.passed || 0}/${s.attempts}` }, { key: "status", label: "", render: stChip }],
     toolbar: [h("button", { class: "btn teal sm", onclick: () => reportLms(res) }, "Export to Excel")] });
   return shell(h("div", {},
-    pageHead("LMS", "Quizzes trainers ran in stores, and how staff did. Write and edit quizzes under “Quizzes”.", rangeBar(), seg),
+    pageHead("Certification", "Quizzes trainers ran in stores, and how staff did. Write and edit quizzes under “Quizzes”.", rangeBar(), seg),
     lmsSummary(res, true),
     h("div", { class: "grid g2", style: "margin-top:16px;align-items:start" }, rollTable("By quiz", roll((a) => a.s.title), "Quiz"), rollTable("By trainer", roll((a) => a.s.trainer_name), "Trainer"),
       rollTable("By store", roll((a) => a.s.store_code && `${a.s.store_code} · ${a.s.store_name}`), "Store"), rollTable("By region", roll((a) => a.s.region), "Region")),
@@ -143,7 +143,7 @@ async function lmsQuizList(seg) {
   const pass = h("input", { type: "number", min: 1, max: 100, value: 80 });
   const add = h("button", { class: "btn teal", onclick: async () => { try { const r = await api("/admin/lms/quizzes", { method: "POST", body: { title: title.value, position_id: pos.value || null, pass_mark: +pass.value } }); location.hash = `#/admin/lms/q/${r.id}`; } catch (e) { toast(e.message); } } }, "+ Create quiz");
   return shell(h("div", {},
-    pageHead("LMS", "Write the quizzes here. Trainers see the active ones and run them in stores by QR code.", seg),
+    pageHead("Certification", "Write the quizzes here. Trainers see the active ones and run them in stores by QR code.", seg),
     h("div", { class: "card" }, h("h2", {}, "New quiz"), h("div", { class: "grid g4", style: "margin-top:10px;align-items:end" }, field("Title", title), field("Position (optional)", pos), field("Pass mark %", pass), h("div", {}, add))),
     h("div", { class: "card" }, h("h2", {}, "Quizzes"),
       quizzes.length ? h("div", { class: "table-wrap" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Quiz", "Position", "Questions", "Pass mark", "Sessions", "Answers", ""].map((x) => h("th", {}, x)))),
@@ -207,7 +207,7 @@ function reportLms(res) {
   const A = res.attempts.map((a) => ({ ...a, s: sess.get(a.session_id) || {} }));
   const avg = xAvg(A, (a) => a.pct), passed = A.filter((a) => a.passed).length;
   return hmReport({
-    file: xFileName("LMS_Quiz_Results"), title: "LMS Quiz Results", period: periodText(), scope: "All trainers",
+    file: xFileName("Certification_Results"), title: "Certification Results", period: periodText(), scope: "All trainers",
     kpis: [{ label: "Sessions", value: res.sessions.length, tone: "ink" }, { label: "Answers", value: A.length, tone: "tan" }, { label: "Staff", value: new Set(A.map((a) => String(a.emp_id).toLowerCase())).size, tone: "card" },
       { label: "Average score", value: avg, pct: true, tone: avg == null ? "card" : avg >= GOOD ? "good" : avg >= WARN ? "teal" : "bad" }, { label: "Pass rate", value: A.length ? Math.round((1000 * passed) / A.length) / 10 : null, pct: true, tone: "teal" }],
     sections: [
