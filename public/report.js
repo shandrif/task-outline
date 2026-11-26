@@ -389,7 +389,7 @@ function reportRecords(key, cfg, rows, cols, { kindLabel = {}, total = rows.leng
       rows: [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))),
       cols: cols.filter((c) => c.key !== "actions").map((c) => {
         const t = c.key === "kind" ? "text" : c.key === "created_at" ? "datetime" : c.key === "pct" ? "pct" : ({ pct: "pct", date: "date", textarea: "long" })[ftype[c.key]] || "text";
-        return { label: c.label, type: t, bold: c.key === "name", width: t === "long" ? 45 : c.key === "name" ? 24 : undefined, get: (r) => (c.key === "kind" ? kindLabel[r.kind] || r.kind : r[c.key]) };
+        return { label: c.label, type: t, bold: c.key === "name", width: t === "long" ? 45 : c.key === "name" ? 24 : undefined, get: (r) => (c.key === "kind" ? kindLabel[r.kind] || r.kind : c.get ? c.get(r) : r[c.key]) };
       }) }, ...(onb ? onb.sheets : [])],
   });
 }

@@ -630,3 +630,5 @@ main.busy .page { opacity: .55; }
 tr.cv-hot > td { background: rgba(194,86,74,.07); }
 tr.cv-warm > td { background: rgba(212,179,139,.16); }
 tr.cv-cold > td { color: var(--muted); }
+.r-coach { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 3fr) auto; }
+.rrow.sent input { background: rgba(43,138,116,.06); }
