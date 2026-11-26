@@ -77,7 +77,7 @@ async function moduleView(key) {
     if (key === "coaching") {   // requests raised in a store visit report wait here until the coaching is done and scored
       cols.splice(cols.findIndex((c) => c.key === "pct") + 1, 0, { key: "status", label: "Status", get: (r) => (r.pct == null ? "Needs coaching" : "Done"),
         render: (r) => h("span", {}, r.pct == null ? h("span", { class: "chip bad" }, "Needs coaching") : h("span", { class: "chip good" }, "Done"),
-          r.sv_id ? h("a", { href: `#/sv/${r.sv_id}`, class: "small muted", style: "margin-left:6px", onclick: (e) => e.stopPropagation() }, svNo(r.sv_id)) : null) });
+          r.visit_id ? h("a", { href: `#/visit/${r.visit_id}`, class: "small muted", style: "margin-left:6px", onclick: (e) => e.stopPropagation() }, `Visit #${r.visit_id}`) : null) });
     }
     if (admin) cols.push({ key: "created_by_name", label: "Entered by" });
     cols.push({ key: "created_at", label: "Entered", render: (r) => fmtDate(r.created_at) });
@@ -122,7 +122,7 @@ async function moduleView(key) {
     });
     holder.replaceChildren(...[
       multi && h("div", { class: "tabs", style: "margin-bottom:12px" }, [["", "All"], ...cfg.kinds.map((k) => [k.key, k.label])].map(([k, l]) => h("button", { type: "button", class: "tab" + (k === kind ? " on" : ""), onclick: () => { kind = k; draw(); } }, l, h("span", { class: "muted small" }, ` ${k ? rows.filter((r) => r.kind === k).length : rows.length}`)))),
-      key === "coaching" && shown.some((r) => r.pct == null) && h("div", { class: "notice" }, `${shown.filter((r) => r.pct == null).length} coaching need${shown.filter((r) => r.pct == null).length === 1 ? "" : "s"} waiting — raised in store visit reports. Open one, give the coaching, then enter the verification % to mark it done.`),
+      key === "coaching" && shown.some((r) => r.pct == null) && h("div", { class: "notice" }, `${shown.filter((r) => r.pct == null).length} coaching need${shown.filter((r) => r.pct == null).length === 1 ? "" : "s"} waiting — raised during Verification visits. Open one, give the coaching, then enter the verification % to mark it done.`),
       h("div", { class: "grid g4" }, tiles),
       key === "onboarding" && onboardingCharts(shown, kindLabel, admin, per),
       shown.length > 0 && breakdown(shown.map((r) => ({ ...r, kind: kindLabel[r.kind] || r.kind })), [...BREAKDOWNS[key].filter(([k]) => k === "kind" ? multi && !kind : shown.some((r) => r[k])), ...(admin ? [["created_by_name", "Entered by"]] : [])]),
@@ -348,7 +348,6 @@ async function svForm(id) {
     st.team = { on_duty: st.team?.on_duty ?? "", checked: st.team?.checked ?? "", rows: ensure(st.team?.rows, () => ({ name: "", position: "", score: "", observation: "" })) };
     st.highlights = ensure(st.highlights, () => ({ text: "", status: null, remarks: "" }));
     st.actions = ensure(st.actions, () => ({ issue: "", action: "", owner: "", due: "" }));
-    st.coaching = st.coaching || [];
     st.quality.forEach((q) => (q.score = q.score ?? ""));
   } else {
     const t = await api("/sv/template").catch(() => ({}));
@@ -357,7 +356,7 @@ async function svForm(id) {
       store_id: null, store_label: "", visit_date: todayYmd(), visit_time: nowHm(), branch_manager: "", visit_type: "Routine",
       readiness: pad(t.readiness, 5).map((item) => ({ item, status: null, remarks: "" })), quality: pad(t.quality, 5).map((product) => ({ product, meets: null, score: "", comments: "" })),
       team: { on_duty: "", checked: "", rows: [1, 2, 3].map(() => ({ name: "", position: "", score: "", observation: "" })) },
-      highlights: pad(t.highlights, 3).map((text) => ({ text, status: null, remarks: "" })), actions: [1, 2].map(() => ({ issue: "", action: "", owner: "", due: "" })), coaching: [],
+      highlights: pad(t.highlights, 3).map((text) => ({ text, status: null, remarks: "" })), actions: [1, 2].map(() => ({ issue: "", action: "", owner: "", due: "" })),
       overall_rating: "", overall_score: "", follow_up: 0, overall_comment: "", ack_name: "", ack_date: "",
     };
   }
@@ -381,23 +380,6 @@ async function svForm(id) {
   const team = rowList(st.team.rows, (r, rm) => h("div", { class: "rrow r-team" }, textIn(r, "name", "Employee name", 120), desigSelect(positions, r.position, { placeholder: "Position", "aria-label": "Position", onchange: (e) => (r.position = e.target.value) }), h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => (r.score = e.target.value) }), textIn(r, "observation", "Observation", 400), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ name: "", position: "", score: "", observation: "" }), "+ Add employee");
   const highlights = rowList(st.highlights, (r, rm) => h("div", { class: "rrow r-ready" }, textIn(r, "text", "Highlight", 300), seg(r, "status"), textIn(r, "remarks", "Remarks"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ text: "", status: null, remarks: "" }), "+ Add highlight");
   const actions = rowList(st.actions, (r, rm) => h("div", { class: "rrow r-act" }, textIn(r, "issue", "Issue / observation", 400), textIn(r, "action", "Action required", 400), textIn(r, "owner", "Owner", 100), h("input", { type: "date", value: r.due || "", "aria-label": "Due date", onchange: (e) => (r.due = e.target.value) }), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ issue: "", action: "", owner: "", due: "" }), "+ Add action");
-  // 7 · coaching needed: each row goes to the Coaching tab (once) when the report is saved
-  const cBlank = () => ({ name: "", emp_id: "", topic: "", details: "" });
-  const sent = (r) => !!r.record_id;
-  const coachList = h("div");
-  const drawCoach = () => coachList.replaceChildren(rowList(st.coaching, (r, rm) => h("div", { class: "rrow r-coach" + (sent(r) ? " sent" : "") },
-    textIn(r, "name", "Employee name *", 120, { disabled: sent(r) }), textIn(r, "emp_id", "Employee ID", 40, { disabled: sent(r) }), textIn(r, "topic", "Coaching topic *", 120, { disabled: sent(r) }),
-    textIn(r, "details", "What coaching is needed", 1000, { disabled: sent(r) }),
-    sent(r) ? h("span", { class: "chip good", title: "Already in the Coaching tab: update it there" }, "In Coaching ✓") : h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), cBlank, "+ Add coaching need"));
-  const suggest = h("div", { class: "chips", style: "margin:0 0 10px" });
-  const drawSuggest = () => {
-    const have = new Set(st.coaching.map((c) => String(c.name || "").trim().toLowerCase()));
-    const low = st.team.rows.filter((r) => String(r.name || "").trim() && r.score !== "" && r.score != null && +r.score < WARN && !have.has(String(r.name).trim().toLowerCase()));
-    suggest.replaceChildren(...(low.length ? [h("span", { class: "small muted" }, `Below ${WARN}% in team performance:`), ...low.map((r) => h("button", { type: "button", class: "chip bad", style: "border:0;cursor:pointer", title: "Add a coaching row for this person",
-      onclick: () => { st.coaching.push({ ...cBlank(), name: String(r.name).trim(), details: r.observation || "" }); drawCoach(); drawSuggest(); } }, `+ ${r.name} · ${r.score}%`))] : []));
-  };
-  drawCoach(); drawSuggest();
-  team.addEventListener("input", drawSuggest); team.addEventListener("click", () => setTimeout(drawSuggest));
   calc();
 
   const scoreIn = h("input", { type: "number", min: 0, max: 100, step: "0.1", inputmode: "decimal", placeholder: "%", value: st.overall_score ?? "", oninput: (e) => (st.overall_score = e.target.value) });
@@ -441,7 +423,6 @@ async function svForm(id) {
       summary,
       field("Overall comment", h("textarea", { rows: 4, maxlength: 2000, value: st.overall_comment || "", oninput: (e) => (st.overall_comment = e.target.value) })),
       h("div", { class: "grid g2", style: "margin-top:10px" }, field("Acknowledged by (branch) — name", textIn(st, "ack_name", "", 120)), field("Acknowledgement date", h("input", { type: "date", value: st.ack_date || "", onchange: (e) => (st.ack_date = e.target.value) })))),
-    svBlock(7, "Coaching needed", "Any gap found during the visit. Each row is added to your Coaching tab as “Needs coaching” when you save the report; the admin sees it too.", suggest, coachList),
     h("div", { class: "row", style: "justify-content:flex-end" }, h("button", { class: "btn teal", onclick: () => save.click() }, id ? "Save changes" : "Save report"))), "#/sv");
 }
 
@@ -469,7 +450,6 @@ async function svView(id) {
       h("div", { class: "grid g3" }, kv("Overall rating", r.overall_rating), kv("Overall score (out of 100%)", r.overall_score == null ? "" : `${r.overall_score}%`), kv("Follow-up visit required", r.follow_up ? "Yes" : "No")),
       h("div", { class: "small muted", style: "margin-top:12px" }, `Store readiness ${r.readiness_pct == null ? "—" : r.readiness_pct + "%"} · Quality average ${r.quality_avg == null ? "—" : r.quality_avg + " / 5"}`),
       h("div", { style: "margin-top:12px" }, h("div", { class: "k small muted" }, "Overall comment"), h("div", { style: "white-space:pre-wrap" }, r.overall_comment || "—"))),
-    (r.coaching || []).length > 0 && h("div", { class: "card" }, h("h2", {}, "7 · Coaching needed"), table(["Employee", "Employee ID", "Topic", "Coaching needed", ""], r.coaching, (x) => [x.name, x.emp_id || "", x.topic, x.details || "", x.record_id ? h("a", { class: "chip good", href: "#/m/coaching", style: "text-decoration:none" }, "In Coaching ✓") : ""], "")),
     h("div", { class: "card sign" }, h("div", { class: "grid g2" },
       h("div", {}, h("div", { class: "small muted" }, "Visited by"), h("div", {}, r.trainer_name || ""), h("div", { class: "sigline" }), h("div", { class: "small muted" }, "Signature")),
       h("div", {}, h("div", { class: "small muted" }, "Acknowledged by (branch)"), h("div", {}, r.ack_name || " "), h("div", { class: "small muted" }, r.ack_date ? fmtDay(r.ack_date) : ""), h("div", { class: "sigline" }), h("div", { class: "small muted" }, "Signature"))))), "#/sv");

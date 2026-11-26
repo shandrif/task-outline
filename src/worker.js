@@ -567,7 +567,7 @@ async function handle(request, env, ctx) {
   if ((m = path.match(/^\/api\/visits\/(\d+)$/))) {
     const id = +m[1];
     if (method === "GET") {
-      const [v, evs, staff] = await env.DB.batch([
+      const [v, evs, staff, coach, weak] = await env.DB.batch([
         env.DB.prepare(`${VISITS_SQL} WHERE v.id=?`).bind(id),
         env.DB.prepare(
           `SELECT e.id,e.staff_name,e.staff_code,e.status,e.score,e.max_score,e.trained_count,e.submitted_at,e.created_at,e.improvement_notes,p.name position_name
@@ -576,10 +576,17 @@ async function handle(request, env, ctx) {
         env.DB.prepare(
           `SELECT staff_name name, MAX(staff_code) code, position_id, MAX(created_at) last_at FROM evaluations
            WHERE store_id=(SELECT store_id FROM visits WHERE id=?) GROUP BY lower(staff_name), position_id ORDER BY last_at DESC LIMIT 300`).bind(id),
+        // coaching needs raised in this visit (they live in the Coaching tab)
+        env.DB.prepare(`SELECT id, name, emp_id, pct, json_extract(data,'$.topic') topic, json_extract(data,'$.details') details, created_at FROM records WHERE module='coaching' AND json_extract(data,'$.visit_id')=? ORDER BY id`).bind(id),
+        // the weakest topics of each evaluation in this visit, to suggest what coaching is needed
+        env.DB.prepare(`SELECT es.evaluation_id, s.title, es.score, es.max FROM eval_sections es JOIN sections s ON s.id=es.section_id JOIN evaluations e ON e.id=es.evaluation_id
+           WHERE e.visit_id=? AND e.status='submitted' AND es.max > 0 AND es.score < es.max ORDER BY es.evaluation_id, 1.0*es.score/es.max`).bind(id),
       ]);
       const visit = visitRows(v.results)[0];
       if (!visit || (!isAdmin && visit.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
-      return json({ visit, evaluations: evs.results, staff: staff.results });
+      const gaps = new Map();
+      for (const w of weak.results) { if (!gaps.has(w.evaluation_id)) gaps.set(w.evaluation_id, []); gaps.get(w.evaluation_id).push({ title: w.title, pct: Math.round((1000 * w.score) / w.max) / 10 }); }
+      return json({ visit, evaluations: evs.results.map((e) => ({ ...e, gaps: (gaps.get(e.id) || []).slice(0, 3) })), staff: staff.results, coaching: coach.results });
     }
     const own = await env.DB.prepare("SELECT trainer_id,store_id,status FROM visits WHERE id=?").bind(id).first();
     if (!own || (!isAdmin && own.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
@@ -602,6 +609,20 @@ async function handle(request, env, ctx) {
       ]);
       return json({ ok: true });
     }
+  }
+  // a coaching need found during a Verification visit: becomes a Coaching record ("Needs coaching") of the visiting trainer
+  if ((m = path.match(/^\/api\/visits\/(\d+)\/coaching$/)) && method === "POST") {
+    const id = +m[1];
+    const v = await env.DB.prepare(`SELECT v.trainer_id, t.name trainer_name, s.username code, s.name store, s.area_manager, s.rom, s.city, s.region
+      FROM visits v JOIN trainers t ON t.id=v.trainer_id JOIN stores s ON s.id=v.store_id WHERE v.id=?`).bind(id).first();
+    if (!v || (!isAdmin && v.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
+    const b = await body();
+    const name = str(b.name, 120, "Employee name", { required: true }), topic = str(b.topic, 120, "Coaching topic", { required: true });
+    const d = Object.fromEntries(Object.entries({ branch: `${v.code} · ${v.store}`, am: v.area_manager, rom: v.rom, city: v.city, region: v.region, topic, details: str(b.details, 1000, "Details"), visit_id: id })
+      .filter(([, x]) => x !== "" && x != null));
+    const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES ('coaching','',?,?,NULL,?,?,?)")
+      .bind(str(b.emp_id, 40, "Employee ID") || null, name, JSON.stringify(d), v.trainer_id, v.trainer_name).run();
+    return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/visits\/(\d+)\/finish$/)) && method === "POST") {
     needTrainer();

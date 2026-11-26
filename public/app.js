@@ -404,7 +404,7 @@ async function newVisitView() {
 
 // ---------- visit page (trainer works here; admin can view) ----------
 async function visitView(id) {
-  const [{ visit: v, evaluations, staff }, positions] = await Promise.all([api(`/visits/${id}`), cachedGet("/positions")]);
+  const [{ visit: v, evaluations, staff, coaching = [] }, positions] = await Promise.all([api(`/visits/${id}`), cachedGet("/positions")]);
   const isTrainer = session.role === "trainer", open = v.status === "open", canWork = isTrainer && open;
   const submitted = evaluations.filter((e) => e.status === "submitted");
   const avg = pct(v.sum_score, v.sum_max);
@@ -452,6 +452,39 @@ async function visitView(id) {
     try { await api(`/visits/${v.id}`, { method: "DELETE" }); cache.delete("/stores"); location.hash = back; } catch (e) { toast(e.message); }
   };
 
+  // --- coaching needed: any gap found in this visit goes to the Coaching tab ("Needs coaching") ---
+  const coachCard = (() => {
+    const mine = isTrainer && v.trainer_id === session.trainer.id;
+    const sentNames = new Set(coaching.map((c) => String(c.name).trim().toLowerCase()));
+    const low = submitted.filter((e) => e.max_score && pct(e.score, e.max_score) < WARN && !sentNames.has(String(e.staff_name).trim().toLowerCase()));
+    const cErr = h("div", { class: "err hidden" });
+    const cName = h("input", { type: "text", maxlength: 120, placeholder: "Employee name", list: "coach-names", autocomplete: "off" });
+    const cId = h("input", { type: "text", maxlength: 40, placeholder: "Optional" });
+    const cTopic = h("input", { type: "text", maxlength: 120, placeholder: "e.g. Latte art, Upselling", list: "coach-topics", autocomplete: "off" });
+    const cDetails = h("textarea", { rows: 2, maxlength: 1000, placeholder: "What coaching is needed" });
+    const fill = (e) => { cName.value = e.staff_name; cId.value = e.staff_code || ""; cTopic.value = e.gaps?.[0]?.title || ""; cDetails.value = `Scored ${pct(e.score, e.max_score)}% in ${e.position_name}${e.gaps?.length ? ` · weakest: ${e.gaps.map((g) => `${g.title} ${g.pct}%`).join(", ")}` : ""}`; cTopic.focus(); };
+    cName.addEventListener("change", () => { const e = submitted.find((x) => x.staff_name.toLowerCase() === cName.value.trim().toLowerCase()); if (e && !cId.value) cId.value = e.staff_code || ""; });
+    const send = h("button", { class: "btn teal", type: "submit" }, "Send to Coaching");
+    const form = mine && h("form", { class: "stack", onsubmit: async (ev) => {
+      ev.preventDefault(); cErr.classList.add("hidden"); send.disabled = true;
+      try { await api(`/visits/${v.id}/coaching`, { method: "POST", body: { name: cName.value, emp_id: cId.value, topic: cTopic.value, details: cDetails.value } }); toast(`Added to your Coaching tab: ${cName.value}`); renderRoute(); }
+      catch (ex) { cErr.textContent = ex.message; cErr.classList.remove("hidden"); send.disabled = false; }
+    } },
+      h("datalist", { id: "coach-names" }, evaluations.map((e) => h("option", { value: e.staff_name }))),
+      h("datalist", { id: "coach-topics" }, [...new Set(evaluations.flatMap((e) => (e.gaps || []).map((g) => g.title)))].map((t) => h("option", { value: t }))),
+      low.length > 0 && h("div", { class: "chips", style: "margin-top:0" }, h("span", { class: "small muted" }, `Needs coaching (below ${WARN}%):`),
+        low.map((e) => h("button", { type: "button", class: "chip bad", style: "border:0;cursor:pointer", title: "Fill the form for this person", onclick: () => fill(e) }, `+ ${e.staff_name} · ${pct(e.score, e.max_score)}%`))),
+      h("div", { class: "grid g3" }, h("div", {}, h("label", {}, "Employee name *"), cName), h("div", {}, h("label", {}, "Staff ID"), cId), h("div", {}, h("label", {}, "Coaching topic *"), cTopic)),
+      h("div", {}, h("label", {}, "What coaching is needed"), cDetails), cErr, h("div", { class: "row", style: "justify-content:flex-end" }, send));
+    const list = coaching.length ? h("div", { class: "table-wrap", style: "margin-bottom:12px" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Employee", "Topic", "Coaching needed", "Status"].map((x) => h("th", {}, x)))),
+      h("tbody", {}, coaching.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#/m/coaching") }, h("td", {}, h("b", {}, c.name), c.emp_id && h("div", { class: "small muted" }, c.emp_id)), h("td", {}, c.topic || ""), h("td", {}, c.details || ""),
+        h("td", {}, c.pct == null ? h("span", { class: "chip bad" }, "Needs coaching") : h("span", { class: "chip good" }, `Done · ${c.pct}%`))))))) : null;
+    if (!form && !list) return null;
+    return h("div", { class: "card" }, h("h2", {}, "Coaching needed"),
+      h("p", { class: "muted small", style: "margin:4px 0 12px" }, mine ? "Any gap you found in this visit. Each one is added to your Coaching tab as “Needs coaching”; give the coaching later and enter the verification % there. The admin sees it too." : "Gaps found in this visit, sent to the Coaching tab."),
+      list, form);
+  })();
+
   const rows = h("div", { class: "table-wrap" }, evaluations.length ? h("table", {}, h("thead", {}, h("tr", {}, ["Staff", "Position", "Result", ""].map((x) => h("th", {}, x)))),
     h("tbody", {}, evaluations.map((e) => h("tr", { class: "click", onclick: () => (location.hash = `#/eval/${e.id}`) },
       h("td", {}, h("b", {}, e.staff_name), e.staff_code && h("div", { class: "small muted" }, e.staff_code)), h("td", {}, e.position_name),
@@ -473,6 +506,7 @@ async function visitView(id) {
       h("div", { class: "stack", style: "margin-top:10px" }, notes,
         h("label", { class: "row", style: "font-weight:700" }, fu, "Follow-up needed", fuDate),
         isTrainer && h("div", { class: "row" }, h("button", { class: "btn ghost sm", onclick: saveNotes }, "Save notes")))),
+    coachCard,
     canWork && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "btn teal", onclick: finish }, "Finish visit")),
     isTrainer && !open && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("a", { class: "btn teal", href: "#/visit/new" }, "Start another visit"))),
     isTrainer ? "#/" : "#/admin/visits");

@@ -187,18 +187,18 @@ export async function moduleRoutes(c) {
   }
   if ((m = path.match(/^\/api\/records\/(\d+)$/))) {
     const id = +m[1];
-    const cur = await env.DB.prepare("SELECT id,module,kind,created_by,json_extract(data,'$.product_name') product,json_extract(data,'$.position') position,json_extract(data,'$.sv_id') sv_id FROM records WHERE id=?").bind(id).first();
+    const cur = await env.DB.prepare("SELECT id,module,kind,created_by,json_extract(data,'$.product_name') product,json_extract(data,'$.position') position,json_extract(data,'$.sv_id') sv_id,json_extract(data,'$.visit_id') visit_id FROM records WHERE id=?").bind(id).first();
     if (!cur || !canTouch(cur.created_by)) throw new HttpError(404, "Record not found");
     if (method === "DELETE") { await env.DB.prepare("DELETE FROM records WHERE id=?").bind(id).run(); return json({ ok: true }); }
     if (method === "PATCH") {
       const b = await body();
       const kd = kindOf(cur.module, cur.kind);
-      const v = clean(kd, b, cur.sv_id ? new Set(["pct", "emp_id"]) : undefined);   // a coaching request from a store visit: the score comes later
+      const v = clean(kd, b, cur.sv_id || cur.visit_id ? new Set(["pct", "emp_id"]) : undefined);   // a coaching need raised in a visit: the score comes later
       await checkProduct(cur.module, v, cur.product);
       await placement(cur.module, v);
       if (kd.fields.some((f) => f.type === "designation")) v.position = await checkDesignation(env, "staff", v.position, { current: cur.position, required: true, label: "Position", bad });
       const p = pack(cur.module, kd, v);
-      if (cur.sv_id) p.data = JSON.stringify({ ...JSON.parse(p.data), sv_id: cur.sv_id });   // keep the link to the store visit report
+      if (cur.sv_id || cur.visit_id) p.data = JSON.stringify({ ...JSON.parse(p.data), ...(cur.sv_id ? { sv_id: cur.sv_id } : {}), ...(cur.visit_id ? { visit_id: cur.visit_id } : {}) });   // keep the link to the visit
       await env.DB.prepare("UPDATE records SET emp_id=?,name=?,pct=?,data=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(p.emp_id, p.name, p.pct, p.data, id).run();
       return json({ ok: true });
     }
@@ -263,16 +263,13 @@ export async function moduleRoutes(c) {
       on_duty: num(t.on_duty, 0, 500, "Employees on duty", { int: true }), checked: num(t.checked, 0, 500, "Employees checked", { int: true }),
       rows: svRows(t.rows, 60, (r) => ({ name: svText(r?.name, 120, "Employee name"), position: svText(r?.position, 80, "Position"), score: num(r?.score, 0, 100, "Employee score", { int: true }), observation: svText(r?.observation, 400, "Observation") })),
     };
-    const coaching = svRows(b.coaching, 40, (r) => ({ name: svText(r?.name, 120, "Employee name"), emp_id: svText(r?.emp_id, 40, "Employee ID"), topic: svText(r?.topic, 120, "Coaching topic"),
-      details: svText(r?.details, 1000, "Coaching details"), record_id: Number.isInteger(r?.record_id) ? r.record_id : null }));
-    for (const c of coaching) if (!c.name || !c.topic) throw bad("Coaching needed: each row needs the employee name and the coaching topic");
     const highlights = svRows(b.highlights, 20, (r) => ({ text: svText(r?.text, 300, "Highlight"), status: yn(r?.status), remarks: svText(r?.remarks, 300, "Remarks") }));
     const actions = svRows(b.actions, 40, (r) => ({ issue: svText(r?.issue, 400, "Issue"), action: svText(r?.action, 400, "Action required"), owner: svText(r?.owner, 100, "Owner"), due: (() => { const d = svText(r?.due, 10, "Due date"); if (d && !DATE.test(d)) throw bad("Due date must be a date"); return d; })() }));
     const rating = svText(b.overall_rating, 30, "Overall rating");
     if (rating && !RATINGS.includes(rating)) throw bad("Unknown rating");
     const answered = readiness.filter((r) => r.status !== null);
     const scored = quality.filter((r) => r.score != null);
-    const body = { readiness, quality, team, highlights, actions, coaching, overall_comment: svText(b.overall_comment, 2000, "Overall comment"), ack_name: svText(b.ack_name, 120, "Acknowledged by"), ack_date: (() => { const d = svText(b.ack_date, 10, "Acknowledgement date"); if (d && !DATE.test(d)) throw bad("Acknowledgement date must be a date"); return d; })() };
+    const body = { readiness, quality, team, highlights, actions, overall_comment: svText(b.overall_comment, 2000, "Overall comment"), ack_name: svText(b.ack_name, 120, "Acknowledged by"), ack_date: (() => { const d = svText(b.ack_date, 10, "Acknowledgement date"); if (d && !DATE.test(d)) throw bad("Acknowledgement date must be a date"); return d; })() };
     const vt = svText(b.visit_type, 30, "Visit type");
     if (vt && !VISIT_TYPES.includes(vt)) throw bad("Unknown visit type");
     return {
@@ -282,23 +279,6 @@ export async function moduleRoutes(c) {
       quality_avg: scored.length ? Math.round((10 * scored.reduce((n, r) => n + r.score, 0)) / scored.length) / 10 : null,
       overall_rating: rating || null, overall_score: num(b.overall_score, 0, 100, "Overall score"), follow_up: b.follow_up === 1 || b.follow_up === true ? 1 : 0,
     };
-  };
-  const syncCoaching = async (reportId) => {
-    const rep_ = await env.DB.prepare("SELECT r.body, r.trainer_id, t.name trainer_name, s.username code, s.name store, s.area_manager, s.rom, s.city, s.region FROM sv_reports r JOIN stores s ON s.id=r.store_id LEFT JOIN trainers t ON t.id=r.trainer_id WHERE r.id=?").bind(reportId).first();
-    const b = JSON.parse(rep_.body || "{}");
-    if (!b.coaching?.length) return;
-    let added = 0;
-    const place = { branch: `${rep_.code} · ${rep_.store}`, am: rep_.area_manager || null, rom: rep_.rom || null, city: rep_.city || null, region: rep_.region || null };
-    for (const c of b.coaching) {
-      // a row is sent to Coaching once; from then on it lives there (the trainer adds the score, or deletes it), so re-saving the report never overwrites or re-creates it
-      if (!c.record_id) {
-        const d = Object.fromEntries(Object.entries({ ...place, topic: c.topic, details: c.details, sv_id: reportId }).filter(([, x]) => x !== "" && x != null));
-        const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES ('coaching','',?,?,NULL,?,?,?)")
-          .bind(c.emp_id || null, c.name, JSON.stringify(d), rep_.trainer_id, rep_.trainer_name || "Admin").run();
-        c.record_id = r.meta.last_row_id; added++;
-      }
-    }
-    if (added) await env.DB.prepare("UPDATE sv_reports SET body=? WHERE id=?").bind(JSON.stringify(b), reportId).run();
   };
   const SV_LIST = `SELECT r.id,r.store_id,r.trainer_id,r.visit_date,r.visit_time,r.visit_type,r.branch_manager,r.readiness_pct,r.quality_avg,r.overall_rating,r.overall_score,r.follow_up,r.created_at,r.updated_at,
       st.name store_name,st.username store_code,st.area_manager,st.rom,st.region,st.city,t.name trainer_name,t.employee_id trainer_employee_id,
@@ -325,7 +305,6 @@ export async function moduleRoutes(c) {
     const r = await env.DB.prepare(
       "INSERT INTO sv_reports (store_id,trainer_id,visit_date,visit_time,branch_manager,visit_type,body,readiness_pct,quality_avg,overall_rating,overall_score,follow_up) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
     ).bind(store.id, session.trainer.id, v.visit_date, v.visit_time, v.branch_manager, v.visit_type, v.body, v.readiness_pct, v.quality_avg, v.overall_rating, v.overall_score, v.follow_up).run();
-    await syncCoaching(r.meta.last_row_id);
     return json({ id: r.meta.last_row_id }, 201);
   }
   // email a report to the store (any trainer who can open the report, or the admin)
@@ -360,7 +339,6 @@ export async function moduleRoutes(c) {
       await env.DB.prepare(
         `UPDATE sv_reports SET ${storeSql}visit_date=?,visit_time=?,branch_manager=?,visit_type=?,body=?,readiness_pct=?,quality_avg=?,overall_rating=?,overall_score=?,follow_up=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`
       ).bind(...extra, v.visit_date, v.visit_time, v.branch_manager, v.visit_type, v.body, v.readiness_pct, v.quality_avg, v.overall_rating, v.overall_score, v.follow_up, id).run();
-      await syncCoaching(id);
       return json({ ok: true });
     }
   }
