@@ -610,7 +610,7 @@ async function handle(request, env, ctx) {
       return json({ ok: true });
     }
   }
-  // a coaching need found during a Verification visit: becomes a Coaching record ("Needs coaching") of the visiting trainer
+  // coaching given on the spot during a Verification visit: becomes a Coaching record of the visiting trainer (done, with its verification %)
   if ((m = path.match(/^\/api\/visits\/(\d+)\/coaching$/)) && method === "POST") {
     const id = +m[1];
     const v = await env.DB.prepare(`SELECT v.trainer_id, t.name trainer_name, s.username code, s.name store, s.area_manager, s.rom, s.city, s.region
@@ -618,10 +618,12 @@ async function handle(request, env, ctx) {
     if (!v || (!isAdmin && v.trainer_id !== session.trainer.id)) throw new HttpError(404, "Visit not found");
     const b = await body();
     const name = str(b.name, 120, "Employee name", { required: true }), topic = str(b.topic, 120, "Coaching topic", { required: true });
-    const d = Object.fromEntries(Object.entries({ branch: `${v.code} · ${v.store}`, am: v.area_manager, rom: v.rom, city: v.city, region: v.region, topic, details: str(b.details, 1000, "Details"), visit_id: id })
+    const pctV = b.pct === "" || b.pct == null ? NaN : Number(b.pct);
+    if (!Number.isFinite(pctV) || pctV < 0 || pctV > 100) throw bad("Verification % after coaching must be a number from 0 to 100");
+    const d = Object.fromEntries(Object.entries({ branch: `${v.code} · ${v.store}`, am: v.area_manager, rom: v.rom, city: v.city, region: v.region, topic, details: str(b.details, 1000, "Coaching given"), visit_id: id })
       .filter(([, x]) => x !== "" && x != null));
-    const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES ('coaching','',?,?,NULL,?,?,?)")
-      .bind(str(b.emp_id, 40, "Employee ID") || null, name, JSON.stringify(d), v.trainer_id, v.trainer_name).run();
+    const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES ('coaching','',?,?,?,?,?,?)")
+      .bind(str(b.emp_id, 40, "Employee ID") || null, name, Math.round(pctV * 10) / 10, JSON.stringify(d), v.trainer_id, v.trainer_name).run();
     return json({ id: r.meta.last_row_id }, 201);
   }
   if ((m = path.match(/^\/api\/visits\/(\d+)\/finish$/)) && method === "POST") {

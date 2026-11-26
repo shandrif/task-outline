@@ -461,13 +461,14 @@ async function visitView(id) {
     const cName = h("input", { type: "text", maxlength: 120, placeholder: "Employee name", list: "coach-names", autocomplete: "off" });
     const cId = h("input", { type: "text", maxlength: 40, placeholder: "Optional" });
     const cTopic = h("input", { type: "text", maxlength: 120, placeholder: "e.g. Latte art, Upselling", list: "coach-topics", autocomplete: "off" });
-    const cDetails = h("textarea", { rows: 2, maxlength: 1000, placeholder: "What coaching is needed" });
-    const fill = (e) => { cName.value = e.staff_name; cId.value = e.staff_code || ""; cTopic.value = e.gaps?.[0]?.title || ""; cDetails.value = `Scored ${pct(e.score, e.max_score)}% in ${e.position_name}${e.gaps?.length ? ` · weakest: ${e.gaps.map((g) => `${g.title} ${g.pct}%`).join(", ")}` : ""}`; cTopic.focus(); };
+    const cDetails = h("textarea", { rows: 2, maxlength: 1000, placeholder: "What you explained or demonstrated, and what to keep practising" });
+    const cPct = h("input", { type: "number", min: 0, max: 100, step: "0.1", inputmode: "decimal", placeholder: "0–100" });
+    const fill = (e) => { cName.value = e.staff_name; cId.value = e.staff_code || ""; cTopic.value = e.gaps?.[0]?.title || ""; cDetails.value = `Scored ${pct(e.score, e.max_score)}% in ${e.position_name}${e.gaps?.length ? ` · weakest: ${e.gaps.map((g) => `${g.title} ${g.pct}%`).join(", ")}` : ""}. Coaching given: `; cTopic.focus(); };
     cName.addEventListener("change", () => { const e = submitted.find((x) => x.staff_name.toLowerCase() === cName.value.trim().toLowerCase()); if (e && !cId.value) cId.value = e.staff_code || ""; });
-    const send = h("button", { class: "btn teal", type: "submit" }, "Send to Coaching");
+    const send = h("button", { class: "btn teal", type: "submit" }, "Submit coaching");
     const form = mine && h("form", { class: "stack", onsubmit: async (ev) => {
       ev.preventDefault(); cErr.classList.add("hidden"); send.disabled = true;
-      try { await api(`/visits/${v.id}/coaching`, { method: "POST", body: { name: cName.value, emp_id: cId.value, topic: cTopic.value, details: cDetails.value } }); toast(`Added to your Coaching tab: ${cName.value}`); renderRoute(); }
+      try { await api(`/visits/${v.id}/coaching`, { method: "POST", body: { name: cName.value, emp_id: cId.value, topic: cTopic.value, details: cDetails.value, pct: cPct.value } }); toast(`Coaching saved to your Coaching tab: ${cName.value}`); renderRoute(); }
       catch (ex) { cErr.textContent = ex.message; cErr.classList.remove("hidden"); send.disabled = false; }
     } },
       h("datalist", { id: "coach-names" }, evaluations.map((e) => h("option", { value: e.staff_name }))),
@@ -475,13 +476,14 @@ async function visitView(id) {
       low.length > 0 && h("div", { class: "chips", style: "margin-top:0" }, h("span", { class: "small muted" }, `Needs coaching (below ${WARN}%):`),
         low.map((e) => h("button", { type: "button", class: "chip bad", style: "border:0;cursor:pointer", title: "Fill the form for this person", onclick: () => fill(e) }, `+ ${e.staff_name} · ${pct(e.score, e.max_score)}%`))),
       h("div", { class: "grid g3" }, h("div", {}, h("label", {}, "Employee name *"), cName), h("div", {}, h("label", {}, "Staff ID"), cId), h("div", {}, h("label", {}, "Coaching topic *"), cTopic)),
-      h("div", {}, h("label", {}, "What coaching is needed"), cDetails), cErr, h("div", { class: "row", style: "justify-content:flex-end" }, send));
-    const list = coaching.length ? h("div", { class: "table-wrap", style: "margin-bottom:12px" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Employee", "Topic", "Coaching needed", "Status"].map((x) => h("th", {}, x)))),
+      h("div", { class: "grid g3" }, h("div", { style: "grid-column: span 2" }, h("label", {}, "Coaching given — details"), cDetails), h("div", {}, h("label", {}, "Verification % after coaching *"), cPct)),
+      cErr, h("div", { class: "row", style: "justify-content:flex-end" }, send));
+    const list = coaching.length ? h("div", { class: "table-wrap", style: "margin-bottom:12px" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Employee", "Topic", "Coaching given", "Verification"].map((x) => h("th", {}, x)))),
       h("tbody", {}, coaching.map((c) => h("tr", { class: "click", onclick: () => (location.hash = "#/m/coaching") }, h("td", {}, h("b", {}, c.name), c.emp_id && h("div", { class: "small muted" }, c.emp_id)), h("td", {}, c.topic || ""), h("td", {}, c.details || ""),
-        h("td", {}, c.pct == null ? h("span", { class: "chip bad" }, "Needs coaching") : h("span", { class: "chip good" }, `Done · ${c.pct}%`))))))) : null;
+        h("td", {}, c.pct == null ? h("span", { class: "chip bad" }, "No score") : avgCell(c.pct))))))) : null;
     if (!form && !list) return null;
-    return h("div", { class: "card" }, h("h2", {}, "Coaching needed"),
-      h("p", { class: "muted small", style: "margin:4px 0 12px" }, mine ? "Any gap you found in this visit. Each one is added to your Coaching tab as “Needs coaching”; give the coaching later and enter the verification % there. The admin sees it too." : "Gaps found in this visit, sent to the Coaching tab."),
+    return h("div", { class: "card" }, h("h2", {}, "Needs coaching"),
+      h("p", { class: "muted small", style: "margin:4px 0 12px" }, mine ? "Coach anyone who needs it on the spot, then record it here: who, the topic, what you covered and their verification % after coaching. It goes straight to your Coaching tab; the admin sees it too." : "Coaching given on the spot during this visit (also in the Coaching tab)."),
       list, form);
   })();
 
