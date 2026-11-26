@@ -18,7 +18,7 @@ async function deptReportDialog() {
   const opts = h("div", { class: "stack" }, DEPT_PERIODS.map(([k, l, f, to]) => h("label", { class: "row", style: "gap:10px;font-weight:700;cursor:pointer" },
     h("input", { type: "radio", name: "dept-p", value: k, checked: k === pick, onchange: () => (pick = k) }), l, h("span", { class: "muted small", style: "font-weight:400" }, `${fmt(f)} – ${fmt(to)}`))));
   const ok = await modal("Training Department report", h("div", { class: "stack" },
-    h("p", { class: "muted small", style: "margin:0" }, "One Excel file for the whole department: an overview, an analytics page for each area (Verification, Onboarding, Coaching, NPD, People dev, Store visits, Workshop) and every record behind them."),
+    h("p", { class: "muted small", style: "margin:0" }, "One Excel file for the whole department: an overview, an analytics page for each area (Verification, Onboarding, Coaching, NPD, People dev, Store visits, Workshop, LMS) and every record behind them."),
     opts), (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(true) }, "Download")]);
   if (!ok) return;
   const [, label, from, to] = DEPT_PERIODS.find((p) => p[0] === pick);
@@ -31,13 +31,13 @@ async function reportDepartment(from, to, label) {
   let d;
   try {
     toast("Collecting the department's data…");
-    const [home, charts, admin, topics, cov, visits, evals, onb, npd, coach, dev, sv, ws, cfg] = await Promise.all([
+    const [home, charts, admin, topics, cov, visits, evals, onb, npd, coach, dev, sv, ws, cfg, lms] = await Promise.all([
       api("/home/summary" + rq()), api("/home/charts" + rq()), api("/admin/summary" + rq()), api("/verify/topics" + rq()), api("/admin/coverage" + rq()),
       apiPages("/visits" + rq("all=1")), apiPages("/evals" + rq("all=1")),
       apiPages("/records" + rq("module=onboarding")), apiPages("/records" + rq("module=npd")), apiPages("/records" + rq("module=coaching")), apiPages("/records" + rq("module=development")),
-      apiPages("/sv" + rq()), api("/workshop"), modCfg(),
+      apiPages("/sv" + rq()), api("/workshop"), modCfg(), api("/lms/results" + rq()).catch(() => ({ sessions: [], attempts: [], questionStats: [] })),
     ]);
-    d = { home, charts, admin, topics, cov, visits, evals: evals.filter((e) => e.status === "submitted"), onb, npd, coach, dev, sv, ws: ws.filter((w) => w.entry_date >= from && w.entry_date <= to), modules: cfg.modules };
+    d = { home, charts, admin, topics, cov, visits, evals: evals.filter((e) => e.status === "submitted"), onb, npd, coach, dev, sv, ws: ws.filter((w) => w.entry_date >= from && w.entry_date <= to), modules: cfg.modules, lms };
   } catch (e) { toast(e.message); return; } finally { Object.assign(range, saved); }
 
   const per = `${label} (${new Date(`${from}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${new Date(`${to}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })})`;
@@ -75,6 +75,7 @@ async function reportDepartment(from, to, label) {
     ["People Development", d.dev.length, avgP(d.dev), `${new Set(d.dev.map((r) => r.kind)).size} tracks`],
     ["Store visit reports", d.sv.length, svAvg, `${new Set(d.sv.map((r) => r.store_code)).size} stores · ${d.sv.filter((r) => r.follow_up).length} follow-ups`],
     ["Workshop / projects", d.ws.length, null, `${wsDone} completed`],
+    ["LMS quizzes", d.lms.attempts.length, xAvg(d.lms.attempts, (a) => a.pct), `${d.lms.sessions.length} sessions · ${d.lms.attempts.filter((a) => a.passed).length} passed`],
   ];
   const maxA = Math.max(1, ...areas.map((a) => a[1]));
   const entries = areas.reduce((n, a) => n + a[1], 0);
@@ -182,6 +183,21 @@ async function reportDepartment(from, to, label) {
     sections: [xRollup("By section", null, d.ws, (w) => (typeof WS_BY !== "undefined" && WS_BY[w.section]?.label) || w.section, { label: "Section", count: "Entries" }),
       xRollup("By trainer", null, d.ws, (w) => w.trainer_name || w.created_by_name, { label: "Trainer", count: "Entries" })] };
 
+  // ---- LMS page ----
+  const lsess = new Map(d.lms.sessions.map((x) => [x.id, x]));
+  const LA = d.lms.attempts.map((a) => ({ ...a, s: lsess.get(a.session_id) || {} }));
+  const lmsAvg = xAvg(LA, (a) => a.pct);
+  const lmsPage = { sheetName: "LMS", tab: "2A78D6", title: "LMS quizzes",
+    kpis: [{ label: "Sessions", value: d.lms.sessions.length, tone: "ink" }, { label: "Answers", value: LA.length, tone: "tan" }, { label: "Staff", value: new Set(LA.map((a) => String(a.emp_id).toLowerCase())).size, tone: "card" },
+      { label: "Average score", value: lmsAvg, pct: true, tone: tone(lmsAvg) }, { label: "Pass rate", value: LA.length ? pctOf(LA.filter((a) => a.passed).length, LA.length) : null, pct: true, tone: "teal" }],
+    sections: [
+      xRollup("By quiz", null, LA, (a) => a.s.title, { label: "Quiz", count: "Answers", pctFn: (a) => a.pct, pctLabel: "Average" }),
+      xRollup("By trainer", null, LA, (a) => a.s.trainer_name, { label: "Trainer", count: "Answers", pctFn: (a) => a.pct, pctLabel: "Average" }),
+      xRollup("By region", null, LA, (a) => a.s.region, { label: "Region", count: "Answers", pctFn: (a) => a.pct, pctLabel: "Average" }),
+      { title: "Hardest questions", note: "lowest share answering correctly (answered 3+ times)", cols: [["Question", 5, "left"], ["Quiz", 2, "left"], ["Answered", 1], ["Correct", 1], ["", 1]],
+        rows: [...d.lms.questionStats].filter((q) => q.answered >= 3).sort((a, b) => a.pct - b.pct).slice(0, 12).map((q) => [cText(q.text), { v: q.quiz, align: "left" }, q.answered, cPct(q.pct), ""]), empty: "Not enough answers yet." },
+    ] };
+
   // ---- data sheets ----
   const recCols = (mod) => { const seen = new Set(), out = []; for (const k of d.modules[mod].kinds) for (const f of k.fields) if (!seen.has(f.key) && f.key !== "pct") { seen.add(f.key); out.push(f); } return out; };
   const recSheet = (name, title, mod, rows, kl) => ({ name, title, rows: [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))), summary: plural(rows.length, "record"),
@@ -192,8 +208,8 @@ async function reportDepartment(from, to, label) {
 
   hmReport({
     file: xFileName(`Training_Department_Report_${from}_to_${to}`), title: "Training Department Report", sheetName: "Overview", scope: "Whole department · all trainers", period: per,
-    ...overview, pages: [verification, onboarding, coaching, npd, dev, svPage, workshop],
-    tip: "An analytics page for each area follows (Verification, Onboarding, Coaching, NPD, People dev, Store visits, Workshop), then every record. Use the filter arrows on the data sheets.",
+    ...overview, pages: [verification, onboarding, coaching, npd, dev, svPage, workshop, lmsPage],
+    tip: "An analytics page for each area follows (Verification, Onboarding, Coaching, NPD, People dev, Store visits, Workshop, LMS), then every record. Use the filter arrows on the data sheets.",
     sheets: [
       { name: "Data · Visits", title: "Verification visits", rows: [...visitRows].sort((a, b) => String(b.started_at).localeCompare(String(a.started_at))), summary: plural(visitRows.length, "visit"), tab: XC.teal,
         cols: [{ label: "Date", get: (v) => v.started_at, type: "datetime" }, { label: "Trainer", get: (v) => v.trainer_name, bold: true, width: 22 }, { label: "Store ID", get: (v) => v.store_code, width: 10 }, { label: "Store", get: (v) => v.store_name, width: 26 },
@@ -218,6 +234,10 @@ async function reportDepartment(from, to, label) {
         cols: [{ label: "Report", get: (r) => svNo(r.id), width: 10 }, { label: "Visit date", get: (r) => r.visit_date, type: "date" }, { label: "Store", get: (r) => `${r.store_code} · ${r.store_name}`, bold: true, width: 28 }, { label: "Trainer", get: (r) => r.trainer_name, width: 20 },
           { label: "Region", get: (r) => r.region, width: 12 }, { label: "Readiness", get: (r) => r.readiness_pct, type: "pct" }, { label: "Quality", get: (r) => r.quality_avg, type: "pct" }, { label: "Overall", get: (r) => r.overall_score, type: "pct" },
           { label: "Rating", get: (r) => r.overall_rating, width: 16 }, { label: "Follow-up", get: (r) => (r.follow_up ? "Yes" : "No"), type: "yesno", yesGood: false }, { label: "Emailed", get: (r) => (r.emailed_at ? "Yes" : "No"), type: "yesno" }] },
+      { name: "Data · LMS answers", title: "LMS quiz answers", rows: [...LA].sort((a, b) => String(b.submitted_at).localeCompare(String(a.submitted_at))), summary: plural(LA.length, "answer"), tab: "2A78D6",
+        cols: [{ label: "When", get: (a) => a.submitted_at, type: "datetime" }, { label: "Staff", get: (a) => a.staff_name, bold: true, width: 22 }, { label: "Employee ID", get: (a) => a.emp_id, width: 12 }, { label: "Position", get: (a) => a.position, width: 16 },
+          { label: "Quiz", get: (a) => a.s.title, width: 24 }, { label: "Score", get: (a) => a.pct, type: "pct" }, { label: "Passed", get: (a) => (a.passed ? "Yes" : "No"), type: "yesno" },
+          { label: "Store", get: (a) => `${a.s.store_code} · ${a.s.store_name}`, width: 26 }, { label: "Trainer", get: (a) => a.s.trainer_name, width: 20 }] },
       { name: "Data · Workshop", title: "Workshop / projects", rows: [...d.ws].sort((a, b) => b.entry_date.localeCompare(a.entry_date)), summary: plural(d.ws.length, "entry", "entries"), tab: XC.warn,
         cols: [{ label: "Date", get: (w) => w.entry_date, type: "date" }, { label: "Section", get: (w) => (typeof WS_BY !== "undefined" && WS_BY[w.section]?.label) || w.section, width: 16 }, { label: "Title", get: (w) => w.title, bold: true, width: 30 },
           { label: "Details", get: (w) => w.details, type: "long", width: 45 }, { label: "Status", get: (w) => w.status, width: 12 }, { label: "Trainer", get: (w) => w.trainer_name || w.created_by_name, width: 20 }] },

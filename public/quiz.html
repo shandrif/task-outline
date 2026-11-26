@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F5EDE3">
+  <meta name="robots" content="noindex">
+  <title>HM Training · Quiz</title>
+  <link rel="icon" href="/logo.png">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { background: var(--bg); }
+    .qz { max-width: 640px; margin: 0 auto; padding: 18px 16px 60px; }
+    .qz-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+    .qz-head img { width: 64px; height: auto; }
+    .qz-head h1 { font-size: 22px; margin: 0; }
+    .qz-q { background: var(--card); border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .qz-q h3 { margin: 0 0 10px; font-size: 16px; }
+    .qz-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: 10px; margin: 6px 0; cursor: pointer; background: #fff; }
+    .qz-opt.on { border-color: var(--good); background: rgba(43,138,116,.08); }
+    .qz-opt input { margin-top: 3px; }
+    .qz-done { text-align: center; padding: 30px 10px; }
+    .qz-done .big { font-size: 56px; font-weight: 900; }
+    .qz-bar { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="qz" id="qz"><p class="muted">Loading the quiz…</p></div>
+<script>
+"use strict";
+(() => {
+  const root = document.getElementById("qz");
+  const token = new URLSearchParams(location.search).get("t") || "";
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) { if (v == null || v === false) continue; if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? "" : v); } for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(c)); return e; };
+  const head = (title, sub) => el("div", { class: "qz-head" }, el("img", { src: "/logo.png", alt: "Half Million" }), el("div", {}, el("h1", {}, title), sub && el("div", { class: "muted small" }, sub)));
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const fail = (msg) => root.replaceChildren(head("HM Training quiz"), el("div", { class: "card" }, el("p", { class: "err", style: "margin:0" }, msg)));
+  if (!/^[A-Za-z0-9_-]{20,40}$/.test(token)) return fail("This quiz link is not complete. Please scan the QR code again.");
+
+  Promise.all([fetch(`/api/quiz/${token}`).then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || "This quiz could not be opened."); return j; }),
+    fetch("/api/designations?kind=staff").then((r) => r.json()).catch(() => [])])
+  .then(([q, positions]) => {
+    if (!q.open) return fail("This quiz session has closed. Ask your trainer for a new QR code.");
+    const answers = {};
+    const name = el("input", { type: "text", maxlength: 100, autocomplete: "name", placeholder: "Full name" });
+    const emp = el("input", { type: "text", maxlength: 40, autocapitalize: "none", placeholder: "Employee ID" });
+    const pos = el("select", {}, el("option", { value: "" }, "Select your position"), ...positions.map((p) => el("option", { value: p.name }, p.name)));
+    const err = el("p", { class: "err", style: "margin:8px 0 0" });
+    const qs = shuffle([...q.questions]);
+    const cards = qs.map((x, n) => {
+      const opts = x.options.map((o, i) => { const r = el("input", { type: "radio", name: `q${x.id}`, value: i }); const lab = el("label", { class: "qz-opt" }, r, el("span", {}, o));
+        r.addEventListener("change", () => { answers[x.id] = i; lab.parentNode.querySelectorAll(".qz-opt").forEach((l) => l.classList.toggle("on", l === lab)); }); return lab; });
+      return el("div", { class: "qz-q" }, el("h3", {}, `${n + 1}. ${x.text}`), el("div", {}, opts));
+    });
+    const send = el("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Submit answers");
+    send.addEventListener("click", async () => {
+      err.textContent = "";
+      if (name.value.trim().length < 2) return (err.textContent = "Please enter your name"), name.focus();
+      if (!emp.value.trim()) return (err.textContent = "Please enter your employee ID"), emp.focus();
+      const left = qs.filter((x) => answers[x.id] == null).length;
+      if (left) return (err.textContent = `Please answer every question (${left} left)`);
+      send.disabled = true; send.textContent = "Sending…";
+      try {
+        const r = await fetch(`/api/quiz/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: name.value, emp_id: emp.value, position: pos.value, answers }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || "Your answers could not be sent. Please try again.");
+        root.replaceChildren(head(q.title, q.store), el("div", { class: "card qz-done" },
+          el("div", { class: "muted" }, `Thank you, ${name.value.trim()}`),
+          el("div", { class: "big", style: `color:${j.passed ? "var(--good)" : "var(--bad)"}` }, `${j.pct}%`),
+          el("div", { style: "font-size:18px;font-weight:800" }, `${j.score} of ${j.total} correct · ${j.passed ? "Passed" : "Not passed"}`),
+          el("p", { class: "muted small" }, `Pass mark ${j.pass_mark}%. Your trainer has your result. You can close this page.`)));
+        window.scrollTo(0, 0);
+      } catch (e) { err.textContent = e.message; send.disabled = false; send.textContent = "Submit answers"; }
+    });
+    root.replaceChildren(
+      head(q.title, `${q.store} · ${q.count} questions · pass mark ${q.pass_mark}%`),
+      el("div", { class: "card" }, el("div", { class: "stack" },
+        el("div", {}, el("label", {}, "Your name *"), name), el("div", {}, el("label", {}, "Employee ID *"), emp), el("div", {}, el("label", {}, "Position"), pos))),
+      ...cards,
+      el("div", { class: "qz-bar" }, err, send));
+  })
+  .catch((e) => fail(e.message));
+})();
+</script>
+</body>
+</html>

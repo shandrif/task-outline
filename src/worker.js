@@ -5,6 +5,7 @@ import { moduleRoutes } from "./modules.js";
 import { workshopRoutes } from "./workshop.js";
 import { emailBackup, backupFileRoute } from "./backup.js";
 import * as Desig from "./designations.js";
+import { lmsPublic, lmsRoutes } from "./lms.js";
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
@@ -434,6 +435,7 @@ async function handle(request, env, ctx) {
 
   if (path.startsWith("/api/backup-file/") && method === "GET") { const r = await backupFileRoute(path, env); if (r) return r; throw new HttpError(404, "Not found"); }
   if (path === "/api/designations" && method === "GET") return Desig.publicList(env, url, json);
+  if (path.startsWith("/api/quiz/")) { const r = await lmsPublic({ path, method, request, env, ctx, bad, HttpError, json, str }); if (r) return r; throw new HttpError(404, "Not found"); }
   if (path === "/api/login" && method === "POST") return login(env, request, ctx);
   if (path === "/api/signup" && method === "POST") return signup(env, request, ctx);
   if (path === "/api/logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": cookieHeader(request, "", 0) });
@@ -520,6 +522,8 @@ async function handle(request, env, ctx) {
     });
   }
 
+  // --- LMS quizzes (admin writes them, trainers run them by QR code) ---
+  if (path.startsWith("/api/lms/") || path.startsWith("/api/admin/lms/")) { const r = await lmsRoutes({ path, method, url, env, session, isAdmin, body, bad, HttpError, json, str, from, to }); if (r) return r; throw new HttpError(404, "Not found"); }
   // --- workshop / projects (own table; not part of any dashboard) ---
   if (path === "/api/workshop" || path.startsWith("/api/workshop/")) return workshopRoutes({ path, method, url, env, session, isAdmin, body, bad, HttpError, json, str });
 

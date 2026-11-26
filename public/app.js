@@ -157,7 +157,7 @@ function syncNav(links, activeIdx) {
   return navHost;
 }
 
-const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/admin/designations", "#/verify", "#/visit/new"]);
+const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/admin/designations", "#/lms", "#/verify", "#/visit/new"]);
 // Left sidebar navigation (layout only; every page below it is unchanged)
 const SIDE_ICONS = {
   "#/home": '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
@@ -226,8 +226,8 @@ function shell(content, active) {
   if (active === "#/") active = "#/verify";
   const admin = session.role === "admin";
   const sub = VERIFY_SUB.has(active) ? (admin
-    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"], ["#/admin/designations", "Designations"]]
-    : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
+    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"], ["#/admin/designations", "Designations"], ["#/lms", "LMS"]]
+    : [["#/verify", "My visits"], ["#/visit/new", "New visit"], ["#/lms", "LMS"]]) : null;
   // the page itself: a fresh element each time, so only it fades in
   const page = h("div", { class: "page" }, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content);
   LAYOUT.main.classList.remove("busy");
@@ -509,7 +509,7 @@ async function visitView(id) {
         h("label", { class: "row", style: "font-weight:700" }, fu, "Follow-up needed", fuDate),
         isTrainer && h("div", { class: "row" }, h("button", { class: "btn ghost sm", onclick: saveNotes }, "Save notes")))),
     coachCard,
-    canWork && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("button", { class: "btn teal", onclick: finish }, "Finish visit")),
+    canWork && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px;gap:8px" }, h("a", { class: "btn ghost", href: `#/lms?visit=${v.id}` }, "Run an LMS quiz here"), h("button", { class: "btn teal", onclick: finish }, "Finish visit")),
     isTrainer && !open && h("div", { class: "row", style: "justify-content:flex-end;margin-top:8px" }, h("a", { class: "btn teal", href: "#/visit/new" }, "Start another visit"))),
     isTrainer ? "#/" : "#/admin/visits");
 }
@@ -1258,6 +1258,9 @@ async function renderRouteInner(seq = routeSeq) {
     else if (path === "/sv/new") view = await svForm(null);
     else if ((m = path.match(/^\/sv\/(\d+)\/edit$/))) view = await svForm(m[1]);
     else if ((m = path.match(/^\/sv\/(\d+)$/))) view = await svView(m[1]);
+    else if (path === "/lms") view = await lmsView(query);
+    else if ((m = path.match(/^\/lms\/s\/(\d+)$/))) view = await lmsSessionView(m[1]);
+    else if ((m = path.match(/^\/admin\/lms\/q\/(\d+)$/)) && session.role === "admin") view = await lmsQuizEditor(m[1]);
     else if (session.role === "admin") {
       if (path === "/admin") view = await adminHome();
       else if (path === "/admin/trainers") view = await adminTrainers();
