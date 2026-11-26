@@ -684,6 +684,40 @@ async function handle(request, env, ctx) {
   needAdmin();
 
   if (path === "/api/admin/summary" && method === "GET") return json(await summary(env, from, to));
+  // visit coverage and repeats: where trainers keep going back, who is evaluated again and again, and which stores get no visit
+  if (path === "/api/admin/coverage" && method === "GET") {
+    const A = [from, to];
+    const P = "e.store_id || '|' || lower(trim(e.staff_name))";
+    const [stores, pairs, staff, trainers, evStore] = await env.DB.batch([
+      env.DB.prepare(`SELECT s.id, s.username code, s.name, s.region, s.city, s.area_manager, s.last_visit_at,
+          COUNT(v.id) visits, COUNT(DISTINCT v.trainer_id) trainers, MAX(v.started_at) last_in_period
+        FROM stores s LEFT JOIN visits v ON v.store_id=s.id AND ${RV()} WHERE s.active=1 GROUP BY s.id`).bind(...A),
+      // the same trainer at the same store more than once
+      env.DB.prepare(`SELECT v.trainer_id, t.name trainer, v.store_id, s.username code, s.name store, COUNT(*) visits, MIN(v.started_at) first_at, MAX(v.started_at) last_at
+        FROM visits v JOIN trainers t ON t.id=v.trainer_id JOIN stores s ON s.id=v.store_id WHERE ${RV()} GROUP BY v.trainer_id, v.store_id HAVING COUNT(*) > 1 ORDER BY visits DESC, last_at DESC LIMIT 200`).bind(...A),
+      // the same person evaluated more than once
+      env.DB.prepare(`SELECT MAX(e.staff_name) name, e.store_id, s.username code, s.name store, COUNT(*) times, COUNT(DISTINCT e.visit_id) visits,
+          GROUP_CONCAT(DISTINCT p.name) positions, GROUP_CONCAT(DISTINCT t.name) trainers, ROUND(100.0*SUM(e.score)/NULLIF(SUM(e.max_score),0),1) pct,
+          MIN(e.submitted_at) first_at, MAX(e.submitted_at) last_at
+        FROM evaluations e JOIN stores s ON s.id=e.store_id JOIN positions p ON p.id=e.position_id JOIN trainers t ON t.id=e.trainer_id
+        WHERE ${RE()} GROUP BY ${P} HAVING COUNT(*) > 1 ORDER BY times DESC, last_at DESC LIMIT 300`).bind(...A),
+      env.DB.prepare(`SELECT t.id, t.name, COUNT(v.id) visits, COUNT(DISTINCT v.store_id) stores FROM trainers t JOIN visits v ON v.trainer_id=t.id AND ${RV()} GROUP BY t.id`).bind(...A),
+      env.DB.prepare(`SELECT e.store_id, e.trainer_id, COUNT(*) n, COUNT(DISTINCT ${P}) people FROM evaluations e WHERE ${RE()} GROUP BY e.store_id, e.trainer_id`).bind(...A),
+    ]);
+    const evByStore = new Map(), evByTrainer = new Map();
+    for (const r of evStore.results) {
+      const s = evByStore.get(r.store_id) || { n: 0, people: 0 }; s.n += r.n; s.people += r.people; evByStore.set(r.store_id, s);
+      const t = evByTrainer.get(r.trainer_id) || { n: 0, people: 0 }; t.n += r.n; t.people += r.people; evByTrainer.set(r.trainer_id, t);
+    }
+    const top = new Map();   // each trainer's most-visited store
+    for (const p of pairs.results) if (!top.has(p.trainer_id)) top.set(p.trainer_id, p);
+    return json({
+      stores: stores.results.map((s) => ({ ...s, evaluations: evByStore.get(s.id)?.n || 0, people: evByStore.get(s.id)?.people || 0 })),
+      pairs: pairs.results, staff: staff.results,
+      trainers: trainers.results.map((t) => ({ ...t, repeat_visits: t.visits - t.stores, top_store: top.get(t.id) ? `${top.get(t.id).code} · ${top.get(t.id).store}` : null, top_visits: top.get(t.id)?.visits || 1,
+        evaluations: evByTrainer.get(t.id)?.n || 0, people: evByTrainer.get(t.id)?.people || 0 })),
+    });
+  }
   if (path === "/api/admin/designations" || path.startsWith("/api/admin/designations/")) return Desig.adminRoutes({ path, method, env, body, bad, HttpError, json, str });
   if (path === "/api/admin/backup" && method === "POST") {
     try { return json(await emailBackup(env, "manual", url.origin)); } catch (e) { throw new HttpError(502, `The backup was not sent: ${e.message}`); }

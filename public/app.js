@@ -840,6 +840,7 @@ async function adminHome() {
     t.pending > 0 && h("a", { class: "notice", href: "#/admin/trainers" }, `${t.pending} trainer${t.pending === 1 ? " is" : "s are"} waiting for your approval → Review`),
     h("div", { class: "grid g4" }, adminTiles()),
     staffByPosition(d.byPosition),
+    coverageSection(),
     verifyTopicsSection(),
     h("div", { class: "card" }, h("h2", {}, "Trainers"), h("p", { class: "muted small" }, "Click a trainer to see every visit, store, staff member and note."), trainerGrid.el),
     h("div", { class: "grid g2", style: "margin-top:16px" },
