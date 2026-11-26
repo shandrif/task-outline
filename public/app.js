@@ -157,7 +157,7 @@ function syncNav(links, activeIdx) {
   return navHost;
 }
 
-const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/verify", "#/visit/new"]);
+const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/admin/designations", "#/verify", "#/visit/new"]);
 // Left sidebar navigation (layout only; every page below it is unchanged)
 const SIDE_ICONS = {
   "#/home": '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
@@ -226,7 +226,7 @@ function shell(content, active) {
   if (active === "#/") active = "#/verify";
   const admin = session.role === "admin";
   const sub = VERIFY_SUB.has(active) ? (admin
-    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"]]
+    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"], ["#/admin/designations", "Designations"]]
     : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : null;
   // the page itself: a fresh element each time, so only it fades in
   const page = h("div", { class: "page" }, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content);
@@ -254,6 +254,16 @@ function tile(cls, v, l, info) {
     el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
   }
   return el;
+}
+
+// ---------- designations: one list set by the admin, picked from a dropdown everywhere else ----------
+const desigCache = {};
+const desigList = (kind) => (desigCache[kind] ||= fetch(`/api/designations?kind=${kind}`).then((r) => r.json()).then((rows) => rows.map((x) => x.name)).catch((e) => { delete desigCache[kind]; throw e; }));
+// a <select> of the list; a value saved before the list existed stays selectable on that record
+function desigSelect(names, current, { placeholder = "Select…", ...attrs } = {}) {
+  const cur = String(current ?? "").trim(), list = [...names];
+  if (cur && !list.some((n) => n.toLowerCase() === cur.toLowerCase())) list.unshift(cur);
+  return h("select", attrs, h("option", { value: "" }, list.length ? placeholder : "No options yet"), ...list.map((n) => h("option", { value: n, selected: n.toLowerCase() === cur.toLowerCase() }, n)));
 }
 
 function pageHead(title, sub, ...right) {
@@ -286,7 +296,8 @@ function loginView(initial = "in", prefill = "", notice = "") {
     const err = h("div", { class: "err hidden" });
     const name = h("input", { type: "text", autocomplete: "name", maxlength: 80, required: true });
     const eid = h("input", { type: "text", autocapitalize: "none", maxlength: 30, required: true, placeholder: "e.g. HM1234" });
-    const des = h("input", { type: "text", maxlength: 60, required: true, autocomplete: "off", placeholder: "Type your designation" });
+    const des = h("select", { required: true }, h("option", { value: "" }, "Loading…"));
+    desigList("trainer").then((names) => des.replaceWith(Object.assign(desigSelect(names, "", { required: true, placeholder: "Select your designation" }), { id: "su-des" }))).catch(() => { des.firstChild.textContent = "Could not load the list — refresh the page"; });
     const pw = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
     const pw2 = h("input", { type: "password", autocomplete: "new-password", required: true, minlength: 8 });
     const btn = h("button", { class: "btn teal", style: "width:100%;justify-content:center" }, "Sign up");
@@ -295,7 +306,7 @@ function loginView(initial = "in", prefill = "", notice = "") {
       if (pw.value !== pw2.value) { err.textContent = "The two passwords don't match"; err.classList.remove("hidden"); return; }
       btn.disabled = true;
       try {
-        await api("/signup", { method: "POST", body: { name: name.value, employee_id: eid.value.trim(), designation: des.value, password: pw.value } });
+        await api("/signup", { method: "POST", body: { name: name.value, employee_id: eid.value.trim(), designation: (document.getElementById("su-des") || des).value, password: pw.value } });
         card.replaceChildren(...cardBody("in", eid.value.trim(), "Account created. An admin needs to approve it before you can sign in."));
       } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); btn.disabled = false; }
     } },
@@ -935,7 +946,7 @@ async function adminTrainers() {
     } catch (e) { toast(e.message); }
   };
   const edit = guarded(async (t) => {
-    const name = h("input", { type: "text", value: t.name, maxlength: 80 }), des = h("input", { type: "text", value: t.designation, maxlength: 60 }), eid = h("input", { type: "text", value: t.employee_id, maxlength: 30 });
+    const name = h("input", { type: "text", value: t.name, maxlength: 80 }), des = desigSelect(await desigList("trainer"), t.designation), eid = h("input", { type: "text", value: t.employee_id, maxlength: 30 });
     const ok = await modal(`Edit ${t.name}`, h("div", { class: "stack" }, h("div", {}, h("label", {}, "Name"), name), h("div", {}, h("label", {}, "Employee ID"), eid), h("div", {}, h("label", {}, "Designation"), des)),
       (close) => [h("button", { class: "btn ghost", onclick: () => close(false) }, "Cancel"), h("button", { class: "btn teal", onclick: () => close(true) }, "Save")]);
     if (!ok) throw new Error("Cancelled");
@@ -1217,6 +1228,7 @@ async function renderRouteInner(seq = routeSeq) {
       else if (path === "/admin/visits") view = await adminVisits(query);
       else if ((m = path.match(/^\/admin\/questions(?:\/(\d+))?$/))) view = await adminQuestions(m[1]);
       else if (path === "/admin/stores") view = await adminStores();
+      else if (path === "/admin/designations") view = await adminDesignations();
       else if ((m = path.match(/^\/visit\/(\d+)$/))) view = await visitView(m[1]);
       else if ((m = path.match(/^\/eval\/(\d+)$/))) view = await evalRoute(m[1]);
       else view = await homeView();
@@ -1239,3 +1251,47 @@ async function renderRouteInner(seq = routeSeq) {
 function render() { if (session.role) renderRoute(); else { LAYOUT = null; $app.replaceChildren(loginView()); } }
 window.addEventListener("hashchange", () => session.role && renderRoute());
 api("/me").then((s) => { session = s; render(); }).catch(() => render());
+
+// ---------- admin: designations (the only place they can be added, renamed or removed) ----------
+async function adminDesignations() {
+  const d = await api("/admin/designations");
+  const LISTS = { staff: ["Staff positions", "Used in Onboarding (Position) and in the staff rows of Store visit reports."], trainer: ["Trainer designations", "Used when a trainer signs up, and when you edit a trainer."] };
+  const reload = async () => { delete desigCache.staff; delete desigCache.trainer; const y = scrollY; await renderRoute(); scrollTo(0, y); };
+  const act = (fn) => async () => { try { await fn(); await reload(); } catch (e) { if (e.message !== "Cancelled") toast(e.message); } };
+  const card = (kind) => {
+    const [title, note] = LISTS[kind], rows = d[kind];
+    const input = h("input", { type: "text", maxlength: 60, placeholder: kind === "staff" ? "New position, e.g. Supervisor" : "New designation", onkeydown: (e) => e.key === "Enter" && add() });
+    const add = act(async () => { if (!input.value.trim()) throw new Error("Type the name first"); await api("/admin/designations", { method: "POST", body: { kind, name: input.value } }); toast(`“${input.value.trim()}” added`); });
+    const unlisted = d.unlisted[kind];
+    const active = rows.filter((x) => x.active);
+    return h("div", { class: "card", style: "margin:0" },
+      h("h2", {}, title), h("p", { class: "muted small", style: "margin-top:-4px" }, note),
+      h("div", { class: "row", style: "flex-wrap:nowrap;margin-bottom:10px" }, input, h("button", { class: "btn teal", onclick: add }, "+ Add")),
+      h("div", { class: "table-wrap" }, h("table", { class: "dtable" },
+        h("thead", {}, h("tr", {}, ["Name", "Used", ""].map((x) => h("th", {}, x)))),
+        h("tbody", {}, rows.map((x) => h("tr", { class: x.active ? "" : "off" },
+          h("td", {}, h("b", {}, x.name), !x.active && h("span", { class: "chip bad", style: "margin-left:8px" }, "Removed")),
+          h("td", {}, x.uses),
+          h("td", {}, h("div", { class: "row", style: "flex-wrap:nowrap;justify-content:flex-end" },
+            h("button", { class: "btn ghost sm", onclick: act(async () => { const v = await askName(`Rename “${x.name}”`, x.name); if (!v || v === x.name) throw new Error("Cancelled"); await api(`/admin/designations/${x.id}`, { method: "PATCH", body: { name: v } }); toast(`Renamed. ${x.uses} record${x.uses === 1 ? "" : "s"} updated.`); }) }, "Rename"),
+            h("button", { class: "btn ghost sm", title: x.active ? "Hide from the dropdown; past records keep it" : "Show in the dropdown again", onclick: act(() => api(`/admin/designations/${x.id}`, { method: "PATCH", body: { active: !x.active } })) }, x.active ? "Remove" : "Restore"),
+            !x.uses && h("button", { class: "icon del", title: "Delete (not used anywhere)", "aria-label": `Delete ${x.name}`, onclick: act(async () => { if (!(await confirmBox("Delete?", `“${x.name}” is not used anywhere and will be deleted.`, "Delete", true))) throw new Error("Cancelled"); await api(`/admin/designations/${x.id}`, { method: "DELETE" }); }) }, "🗑")))))))),
+      unlisted.length > 0 && h("div", { style: "margin-top:14px" },
+        h("h3", { style: "margin:0 0 4px" }, `Not on the list (${unlisted.length})`),
+        h("p", { class: "muted small", style: "margin:0 0 8px" }, "Typed before the dropdown existed. Merge each into a name on the list, so tracking counts them together. Leave anything you are not sure about."),
+        h("div", { class: "table-wrap" }, h("table", { class: "dtable" }, h("thead", {}, h("tr", {}, ["Typed as", "Used", "Merge into", ""].map((x) => h("th", {}, x)))),
+          h("tbody", {}, unlisted.map((u) => {
+            const sel = h("select", {}, h("option", { value: "" }, "Choose…"), active.map((x) => h("option", { value: x.id }, x.name)));
+            return h("tr", {}, h("td", {}, h("b", {}, u.name)), h("td", {}, u.uses), h("td", {}, sel),
+              h("td", {}, h("button", { class: "btn ghost sm", onclick: act(async () => {
+                if (!sel.value) throw new Error("Choose a name from the list first");
+                const to = sel.selectedOptions[0].textContent;
+                if (!(await confirmBox("Merge?", `Every “${u.name}” (${u.uses}) becomes “${to}”.`, "Merge"))) throw new Error("Cancelled");
+                const r = await api("/admin/designations/merge", { method: "POST", body: { kind, from: u.name, to: +sel.value } }); toast(`Merged into “${to}”`); }) }, "Merge")));
+          }))))),
+    );
+  };
+  return shell(h("div", {},
+    pageHead("Designations", "Only you can add, rename or remove these. Everyone else picks from a dropdown, so each designation is always spelled the same way. Renaming updates every record that uses it; removing hides it from the dropdown but past records keep it."),
+    h("div", { class: "grid g2", style: "align-items:start" }, card("staff"), card("trainer"))), "#/admin/designations");
+}

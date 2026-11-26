@@ -1,4 +1,5 @@
 import { svEmailRoutes } from "./sv-email.js";
+import { checkDesignation, designationMap } from "./designations.js";
 
 // Onboarding, NPD, Training/Coaching, People Development (generic records) and Store Visit reports.
 // Trainers see and change only their own entries; the admin sees and changes everything.
@@ -7,7 +8,7 @@ const T = (key, label, extra = {}) => ({ key, label, type: "text", ...extra });
 const STORE_FILL = { type: "store" };
 
 const ONB_BASE = [
-  T("emp_id", "Employee ID", { required: true }), T("name", "Employee name", { required: true }), T("position", "Position", { required: true }),
+  T("emp_id", "Employee ID", { required: true }), T("name", "Employee name", { required: true }), T("position", "Position", { type: "designation", required: true }),
   T("doj", "Date of joining", { type: "date", required: true }), T("nationality", "Nationality", { required: true }),
   T("training_start", "Training started", { type: "date" }), T("training_end", "Training ended", { type: "date" }),
   T("theory", "Theory %", { type: "pct" }), T("practical", "Practical %", { type: "pct" }),
@@ -164,6 +165,7 @@ export async function moduleRoutes(c) {
     const kd = kindOf(b.module, b.kind);
     const v = clean(kd, b);
     await checkProduct(b.module, v, null);
+    if (kd.fields.some((f) => f.type === "designation")) v.position = await checkDesignation(env, "staff", v.position, { required: true, label: "Position", bad });
     const p = pack(b.module, kd, v);
     const r = await env.DB.prepare("INSERT INTO records (module,kind,emp_id,name,pct,data,created_by,created_by_name) VALUES (?,?,?,?,?,?,?,?)")
       .bind(b.module, kd.key, p.emp_id, p.name, p.pct, p.data, isAdmin ? null : session.trainer.id, who()).run();
@@ -171,7 +173,7 @@ export async function moduleRoutes(c) {
   }
   if ((m = path.match(/^\/api\/records\/(\d+)$/))) {
     const id = +m[1];
-    const cur = await env.DB.prepare("SELECT id,module,kind,created_by,json_extract(data,'$.product_name') product FROM records WHERE id=?").bind(id).first();
+    const cur = await env.DB.prepare("SELECT id,module,kind,created_by,json_extract(data,'$.product_name') product,json_extract(data,'$.position') position FROM records WHERE id=?").bind(id).first();
     if (!cur || !canTouch(cur.created_by)) throw new HttpError(404, "Record not found");
     if (method === "DELETE") { await env.DB.prepare("DELETE FROM records WHERE id=?").bind(id).run(); return json({ ok: true }); }
     if (method === "PATCH") {
@@ -179,6 +181,7 @@ export async function moduleRoutes(c) {
       const kd = kindOf(cur.module, cur.kind);
       const v = clean(kd, b);
       await checkProduct(cur.module, v, cur.product);
+      if (kd.fields.some((f) => f.type === "designation")) v.position = await checkDesignation(env, "staff", v.position, { current: cur.position, required: true, label: "Position", bad });
       const p = pack(cur.module, kd, v);
       await env.DB.prepare("UPDATE records SET emp_id=?,name=?,pct=?,data=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(p.emp_id, p.name, p.pct, p.data, id).run();
       return json({ ok: true });
@@ -222,6 +225,16 @@ export async function moduleRoutes(c) {
   const svText = (v, max, label) => str(v, max, label);
   const svRows = (arr, limit, shape) => (Array.isArray(arr) ? arr.slice(0, limit) : []).map(shape).filter((r) => Object.values(r).some((x) => x !== "" && x != null));
   const yn = (v) => (v === 1 || v === true ? 1 : v === 0 || v === false ? 0 : null);
+  const svPositions = async (b, prevBody) => {
+    const allowed = await designationMap(env, "staff");
+    const keep = new Set(((prevBody && JSON.parse(prevBody).team?.rows) || []).map((r) => String(r.position || "").trim().toLowerCase()).filter(Boolean));
+    for (const r of (Array.isArray(b.team?.rows) ? b.team.rows : [])) {
+      const p = String(r?.position ?? "").trim();
+      if (!p) continue;
+      if (allowed.has(p.toLowerCase())) r.position = allowed.get(p.toLowerCase());
+      else if (!keep.has(p.toLowerCase())) throw bad(`Position “${p.slice(0, 40)}” is not on the list. Choose it from the dropdown; only the admin can add positions.`);
+    }
+  };
   const buildSv = (b) => {
     const visit_date = svText(b.visit_date, 10, "Visit date");
     if (!DATE.test(visit_date)) throw bad("Visit date is required");
@@ -271,6 +284,7 @@ export async function moduleRoutes(c) {
     const b = await body();
     const store = await env.DB.prepare("SELECT id FROM stores WHERE id=? AND active=1").bind(+b.store_id).first();
     if (!store) throw bad("Choose a store");
+    await svPositions(b, null);
     const v = buildSv(b);
     const r = await env.DB.prepare(
       "INSERT INTO sv_reports (store_id,trainer_id,visit_date,visit_time,branch_manager,visit_type,body,readiness_pct,quality_avg,overall_rating,overall_score,follow_up) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)"
@@ -298,6 +312,7 @@ export async function moduleRoutes(c) {
     if (method === "DELETE") { await env.DB.prepare("DELETE FROM sv_reports WHERE id=?").bind(id).run(); return json({ ok: true }); }
     if (method === "PUT") {
       const b = await body();
+      await svPositions(b, row.body);
       const v = buildSv(b);
       let storeSql = "", extra = [];
       if (b.store_id != null) {

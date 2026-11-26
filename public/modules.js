@@ -131,6 +131,7 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
   const admin = session.role === "admin";
   const stores = await cachedGet("/stores", 60000);
   const products = modKey === "npd" ? (await api("/npd-products")).filter((x) => x.active) : [];
+  const positions = cfg.kinds.some((k) => k.fields.some((f) => f.type === "designation")) ? await desigList("staff") : [];
   const byLabel = new Map(stores.map((s) => [storeLabel(s).toLowerCase(), s]));
   let kindKey = rec ? rec.kind : presetKind ?? cfg.kinds[0].key;
   if (!cfg.kinds.some((k) => k.key === kindKey)) kindKey = cfg.kinds[0].key;
@@ -161,6 +162,7 @@ async function recordForm(modKey, cfg, rec, presetKind, onSaved) {
         el = h("select", { disabled: names.length === 0 }, h("option", { value: "" }, names.length ? "Select a product" : "No products yet"), ...names.map((n) => h("option", { value: n, selected: n.toLowerCase() === cur.toLowerCase() }, n)));
         if (!names.length) el.dataset.empty = "1";
       }
+      else if (f.type === "designation") el = desigSelect(positions, val, { placeholder: "Select a position" });   // only the admin adds positions
       else if (f.type === "pct") el = h("input", { type: "number", min: 0, max: 100, step: "0.1", inputmode: "decimal", value: val, oninput: refresh });
       else el = h("input", { type: "text", maxlength: 120, value: val, placeholder: f.placeholder || (f.type === "store" ? "Search or pick a store" : ""), list: f.type === "store" ? "dl-stores" : null, autocomplete: "off" });
       if (f.type === "store") {
@@ -319,7 +321,7 @@ const svBlock = (n, title, hint, ...kids) => h("div", { class: "card svb" }, h("
 
 async function svForm(id) {
   if (session.role === "admin" && !id) { location.hash = "#/sv"; return h("div"); }
-  const [{ sv: cfg }, stores] = await Promise.all([modCfg(), cachedGet("/stores", 60000)]);
+  const [{ sv: cfg }, stores, positions] = await Promise.all([modCfg(), cachedGet("/stores", 60000), desigList("staff")]);
   let st;
   const rowsOf = (items, mk) => (items && items.length ? items : [""]).map(mk);
   if (id) {
@@ -360,7 +362,7 @@ async function svForm(id) {
   const readiness = rowList(st.readiness, (r, rm) => h("div", { class: "rrow r-ready" }, textIn(r, "item", "Checkpoint", 300, { "aria-label": "Checkpoint" }), seg(r, "status"), textIn(r, "remarks", "Remarks"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ item: "", status: null, remarks: "" }), "+ Add checkpoint");
   const scoreSel = (r) => h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => { r.score = e.target.value; calc(); } });
   const quality = rowList(st.quality, (r, rm) => h("div", { class: "rrow r-qual" }, textIn(r, "product", "Product", 200, { "aria-label": "Product" }), seg(r, "meets"), scoreSel(r), textIn(r, "comments", "Comments"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ product: "", meets: null, score: "", comments: "" }), "+ Add product");
-  const team = rowList(st.team.rows, (r, rm) => h("div", { class: "rrow r-team" }, textIn(r, "name", "Employee name", 120), textIn(r, "position", "Position", 80), h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => (r.score = e.target.value) }), textIn(r, "observation", "Observation", 400), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ name: "", position: "", score: "", observation: "" }), "+ Add employee");
+  const team = rowList(st.team.rows, (r, rm) => h("div", { class: "rrow r-team" }, textIn(r, "name", "Employee name", 120), desigSelect(positions, r.position, { placeholder: "Position", "aria-label": "Position", onchange: (e) => (r.position = e.target.value) }), h("input", { type: "number", min: 0, max: 100, step: "1", inputmode: "numeric", placeholder: "Score %", "aria-label": "Score, percent", value: r.score ?? "", oninput: (e) => (r.score = e.target.value) }), textIn(r, "observation", "Observation", 400), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ name: "", position: "", score: "", observation: "" }), "+ Add employee");
   const highlights = rowList(st.highlights, (r, rm) => h("div", { class: "rrow r-ready" }, textIn(r, "text", "Highlight", 300), seg(r, "status"), textIn(r, "remarks", "Remarks"), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ text: "", status: null, remarks: "" }), "+ Add highlight");
   const actions = rowList(st.actions, (r, rm) => h("div", { class: "rrow r-act" }, textIn(r, "issue", "Issue / observation", 400), textIn(r, "action", "Action required", 400), textIn(r, "owner", "Owner", 100), h("input", { type: "date", value: r.due || "", "aria-label": "Due date", onchange: (e) => (r.due = e.target.value) }), h("button", { type: "button", class: "icon del", "aria-label": "Remove row", onclick: rm }, "✕")), () => ({ issue: "", action: "", owner: "", due: "" }), "+ Add action");
   calc();

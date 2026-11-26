@@ -4,6 +4,7 @@
 import { moduleRoutes } from "./modules.js";
 import { workshopRoutes } from "./workshop.js";
 import { emailBackup, backupFileRoute } from "./backup.js";
+import * as Desig from "./designations.js";
 
 const COOKIE = "hm_session";
 const SESSION_TTL = 60 * 60 * 12; // admin: 12 h
@@ -158,7 +159,7 @@ async function signup(env, request, ctx) {
   const b = await request.json().catch(() => ({}));
   const name = str(b.name, 80, "Name", { required: true, min: 2 });
   const employeeId = str(b.employee_id, 30, "Employee ID", { required: true, min: 2 });
-  const designation = str(b.designation, 60, "Designation", { required: true, min: 2 });
+  const designation = await Desig.checkDesignation(env, "trainer", b.designation, { required: true, bad });
   const password = str(b.password, 100, "Password", { required: true });
   if (!/^[A-Za-z0-9._-]+$/.test(employeeId)) throw bad("Employee ID can only contain letters, numbers, dots, dashes and underscores");
   if (employeeId.toLowerCase() === (env.ADMIN_USERNAME || "admin").toLowerCase() || employeeId.toUpperCase() === "LEGACY") throw bad("This employee ID is reserved");
@@ -430,6 +431,7 @@ async function handle(request, env, ctx) {
   let m;
 
   if (path.startsWith("/api/backup-file/") && method === "GET") { const r = await backupFileRoute(path, env); if (r) return r; throw new HttpError(404, "Not found"); }
+  if (path === "/api/designations" && method === "GET") return Desig.publicList(env, url, json);
   if (path === "/api/login" && method === "POST") return login(env, request, ctx);
   if (path === "/api/signup" && method === "POST") return signup(env, request, ctx);
   if (path === "/api/logout" && method === "POST") return json({ ok: true }, 200, { "set-cookie": cookieHeader(request, "", 0) });
@@ -682,6 +684,7 @@ async function handle(request, env, ctx) {
   needAdmin();
 
   if (path === "/api/admin/summary" && method === "GET") return json(await summary(env, from, to));
+  if (path === "/api/admin/designations" || path.startsWith("/api/admin/designations/")) return Desig.adminRoutes({ path, method, env, body, bad, HttpError, json, str });
   if (path === "/api/admin/backup" && method === "POST") {
     try { return json(await emailBackup(env, "manual", url.origin)); } catch (e) { throw new HttpError(502, `The backup was not sent: ${e.message}`); }
   }
@@ -696,6 +699,10 @@ async function handle(request, env, ctx) {
     if (method === "PATCH") {
       const b = await body();
       const status = ["pending", "approved", "disabled"].includes(b.status) ? b.status : null;
+      if (b.designation != null) {   // from the list; a trainer may keep a designation typed before the list existed
+        const cur = await env.DB.prepare("SELECT designation FROM trainers WHERE id=?").bind(id).first();
+        b.designation = await Desig.checkDesignation(env, "trainer", b.designation, { current: cur?.designation, required: true, bad });
+      }
       let eid = null;
       if (b.employee_id != null) {
         eid = str(b.employee_id, 30, "Employee ID", { required: true, min: 2 });
