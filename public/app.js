@@ -157,7 +157,8 @@ function syncNav(links, activeIdx) {
   return navHost;
 }
 
-const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/admin/designations", "#/lms", "#/verify", "#/visit/new"]);
+const VERIFY_SUB = new Set(["#/admin", "#/admin/trainers", "#/admin/visits", "#/admin/stores", "#/admin/questions", "#/admin/designations", "#/verify", "#/visit/new"]);
+const ONB_SUB = new Set(["#/m/onboarding", "#/lms"]);   // Onboarding: records + LMS quizzes
 // Left sidebar navigation (layout only; every page below it is unchanged)
 const SIDE_ICONS = {
   "#/home": '<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>',
@@ -182,6 +183,7 @@ function navIndexFor(active) {
   const links = sideLinks();
   if (VERIFY_SUB.has(base) || /^#\/(admin|visit|eval)\b/.test(base)) return links.findIndex(([href]) => href === verifyHref());
   if (/^#\/sv\b/.test(base)) return links.findIndex(([href]) => href === "#/sv");
+  if (ONB_SUB.has(base) || /^#\/lms\b/.test(base)) return links.findIndex(([href]) => href === "#/m/onboarding");
   const i = links.findIndex(([href]) => href === base);
   return i < 0 ? 0 : i;
 }
@@ -226,10 +228,11 @@ function shell(content, active) {
   if (active === "#/") active = "#/verify";
   const admin = session.role === "admin";
   const sub = VERIFY_SUB.has(active) ? (admin
-    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"], ["#/admin/designations", "Designations"], ["#/lms", "LMS"]]
-    : [["#/verify", "My visits"], ["#/visit/new", "New visit"], ["#/lms", "LMS"]]) : null;
+    ? [["#/admin", "Dashboard"], ["#/admin/trainers", "Trainers"], ["#/admin/visits", "Visits"], ["#/admin/stores", "Stores"], ["#/admin/questions", "Questions"], ["#/admin/designations", "Designations"]]
+    : [["#/verify", "My visits"], ["#/visit/new", "New visit"]]) : ONB_SUB.has(active) ? [["#/m/onboarding", "Records"], ["#/lms", "LMS"]] : null;
+  const subLabel = ONB_SUB.has(active) ? "Onboarding" : "Verification";
   // the page itself: a fresh element each time, so only it fades in
-  const page = h("div", { class: "page" }, sub && h("nav", { class: "subnav no-print", "aria-label": "Verification sections" }, h("span", { class: "small muted" }, "Verification"), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content);
+  const page = h("div", { class: "page" }, sub && h("nav", { class: "subnav no-print", "aria-label": `${subLabel} sections` }, h("span", { class: "small muted" }, subLabel), sub.map(([href, label]) => h("a", { href, class: active === href ? "on" : "" }, label))), content);
   LAYOUT.main.classList.remove("busy");
   LAYOUT.main.replaceChildren(page);
   sideActivate(active);
